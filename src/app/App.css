@@ -1,0 +1,52 @@
+.dashboard-page .table-section header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space);
+}
+
+.dashboard-page .table-section header span {
+  color: var(--muted);
+}
+
+.incident-page .panel,
+.war-room-page .panel {
+  gap: var(--space);
+}
+
+.incident-page .actions-row .btn {
+  min-width: 150px;
+}
+
+.war-room-layout {
+  display: flex;
+  gap: var(--space-lg);
+  align-items: flex-start;
+}
+
+.table-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.war-room-page .chat-messages {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.war-room-page .panel header span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.settings-page fieldset {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+@media (max-width: 960px) {
+  .war-room-layout {
+    flex-direction: column;
+  }
+}
