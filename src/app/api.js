@@ -10,6 +10,11 @@ import {
   mockAuthVerifyTotp,
   mockAuthLogout,
 } from './api.mock.js';
+import {
+  mockFetchRecentTraffic,
+  mockFetchPacketDetail,
+  mockCreateIncidentFromPacket,
+} from './mocks/traffic.mock.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -48,6 +53,8 @@ export async function fetchIncidents(filters, baseUrl) {
     severity: filters?.severity || '',
     from: filters?.from || '',
     to: filters?.to || '',
+    filter_by_ip: filters?.filterByIp || '',
+    packet_id: filters?.packetId || '',
   });
   const response = await fetch(url, { method: 'GET' });
   return handleResponse(response);
@@ -102,6 +109,47 @@ export async function postWarRoomMessage(warRoomId, payload, baseUrl) {
     method: 'POST',
     headers: DEFAULT_HEADERS,
     body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchRecentTraffic({ since, limit }, baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockFetchRecentTraffic({ since, limit });
+  }
+  const url = toUrl(baseUrl, '/traffic/recent', {
+    since: since || '',
+    limit: limit || 100,
+  });
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse(response);
+}
+
+export async function fetchPacketDetail(packetId, baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockFetchPacketDetail(packetId);
+  }
+  const url = toUrl(baseUrl, `/traffic/packets/${packetId}`);
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse(response);
+}
+
+export async function createIncidentFromPacket(data, baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockCreateIncidentFromPacket(data);
+  }
+  const url = toUrl(baseUrl, '/incidents/from-packet');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify(data),
   });
   return handleResponse(response);
 }

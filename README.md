@@ -11,6 +11,7 @@ Interfaz React ligera para un sistema de detección de intrusos (IDS) universita
 - Integración REST encapsulada con `fetch` y fallback a un mock con latencia simulada.
 - Componentes accesibles (focus visible, navegación por teclado, uso de `aria-live`).
 - Estilos modernos con CSS nativo, variables, temas claro/oscuro (`prefers-color-scheme`) y responsive.
+- Monitor de tráfico en tiempo real con WebSocket/polling, resaltado de alertas y sincronización con la tabla de incidentes.
 
 ## Requisitos
 
@@ -35,6 +36,17 @@ El archivo `src/app/state.js` carga la configuración guardada en `localStorage`
 
 Con `apiBaseUrl` vacío, todas las llamadas usan los datos mock y el chat IA simulado.
 
+### Monitor de tráfico
+
+- WebSocket: el monitor se conecta a `wss://<apiBaseUrl>/traffic/stream`. Ajusta `settings.apiBaseUrl` para apuntar al backend.
+- Polling: puedes alternar a polling desde la UI (select en la barra del monitor) y elegir 1s/2s/5s como intervalo.
+- Mock: habilita `VITE_USE_MOCKS=true` (o deja `apiBaseUrl` vacío) para que el monitor use el generador `src/app/mocks/traffic.mock.js`.
+- El mock también se activa en modo polling; genera ~500 paquetes con alertas aleatorias y puedes crear incidentes desde los paquetes.
+- Por defecto el monitor se muestra como wireframe; activa `VITE_MONITOR_ENABLED=true` en el entorno para habilitar la captura en vivo.
+- Variables adicionales para mocks:
+  - `VITE_MOCK_TRAFFIC_SEED` (por defecto 120), `VITE_MOCK_TRAFFIC_MIN_BATCH` y `VITE_MOCK_TRAFFIC_MAX_BATCH` controlan el volumen simulado.
+  - `VITE_MOCK_INCIDENT_LIMIT` limita los incidentes mock (por defecto 5).
+
 ### Credenciales mock
 
 - Login: navega a `#/login` y presiona **Continuar con Google**. El flujo mock solicitará un código TOTP.
@@ -49,8 +61,11 @@ src/
     App.css
     state.js          # Contexto global y acciones puras
     api.js            # Funciones fetch al backend o mock
+    api.socket.js     # Helper WebSocket con fallback a mock
     api.mock.js       # Dataset y latencia simulada
     router.js         # Router hash con code-splitting manual
+    mocks/
+      traffic.mock.js # Generador de paquetes y alertas mock
   pages/              # Dashboard, IncidentDetail, WarRoom, Settings
   components/         # Topbar, Sidebar, Table, Toast, etc.
   styles/

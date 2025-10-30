@@ -119,7 +119,11 @@ const withLatency = async (fn) => {
 };
 
 export async function mockFetchIncidents(filters) {
-  return withLatency(() => clone(applyFilters(mockDb.incidents, filters)));
+  return withLatency(() => {
+    const filtered = applyFilters(mockDb.incidents, filters);
+    const limit = Number(import.meta?.env?.VITE_MOCK_INCIDENT_LIMIT || 5);
+    return clone(filtered.slice(0, limit));
+  });
 }
 
 export async function mockFetchIncidentById(id) {

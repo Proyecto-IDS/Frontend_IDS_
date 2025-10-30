@@ -10,6 +10,9 @@ import {
   authFetchMe as apiAuthFetchMe,
   authVerifyTotp as apiAuthVerifyTotp,
   authLogout as apiAuthLogout,
+  fetchRecentTraffic,
+  fetchPacketDetail,
+  createIncidentFromPacket,
 } from './api.js';
 
 const AppStateContext = createContext(null);
@@ -59,6 +62,22 @@ const initialState = {
     error: null,
     mfaRequired: false,
     mfaTicket: null,
+  },
+  traffic: {
+    packets: [],
+    pendingPackets: [],
+    selectedPacketId: null,
+    mode: 'ws',
+    paused: false,
+    pollingInterval: 2000,
+    bufferSize: 600,
+    lastTimestamp: null,
+    filters: {
+      protocol: 'ALL',
+      severity: 'ALL',
+      search: '',
+    },
+    selectedIp: null,
   },
 };
 
@@ -180,6 +199,129 @@ function reducer(state, action) {
           error: null,
           mfaRequired: false,
           mfaTicket: null,
+        },
+      };
+    }
+    case 'traffic/append': {
+      const { packets, lastTimestamp } = action.payload;
+      const combined = [...state.traffic.packets, ...packets];
+      const trimmed = combined.slice(-state.traffic.bufferSize);
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          packets: trimmed,
+          lastTimestamp,
+        },
+      };
+    }
+    case 'traffic/pending': {
+      const pending = [...state.traffic.pendingPackets, ...action.payload.packets].slice(-state.traffic.bufferSize);
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          pendingPackets: pending,
+        },
+      };
+    }
+    case 'traffic/flush': {
+      const combined = [...state.traffic.packets, ...state.traffic.pendingPackets];
+      const trimmed = combined.slice(-state.traffic.bufferSize);
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          packets: trimmed,
+          pendingPackets: [],
+          lastTimestamp: action.payload?.lastTimestamp || state.traffic.lastTimestamp,
+        },
+      };
+    }
+    case 'traffic/select': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          selectedPacketId: action.payload.packetId,
+          selectedIp: action.payload.ip || state.traffic.selectedIp,
+        },
+      };
+    }
+    case 'traffic/filters': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          filters: { ...state.traffic.filters, ...action.payload },
+        },
+      };
+    }
+    case 'traffic/mode': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          mode: action.payload,
+        },
+      };
+    }
+    case 'traffic/polling': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          pollingInterval: action.payload,
+        },
+      };
+    }
+    case 'traffic/paused': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          paused: action.payload,
+        },
+      };
+    }
+    case 'traffic/link': {
+      const { packetId, incidentId, severity } = action.payload;
+      const packets = state.traffic.packets.map((packet) =>
+        packet.id === packetId ? { ...packet, incidentId, severity: severity || packet.severity } : packet,
+      );
+      const pendingPackets = state.traffic.pendingPackets.map((packet) =>
+        packet.id === packetId ? { ...packet, incidentId, severity: severity || packet.severity } : packet,
+      );
+      const incidents = state.incidents.map((incident) =>
+        incident.id === incidentId ? { ...incident, linkedPacketId: packetId } : incident,
+      );
+      return {
+        ...state,
+        incidents,
+        traffic: {
+          ...state.traffic,
+          packets,
+          pendingPackets,
+        },
+      };
+    }
+    case 'traffic/buffer-size': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          bufferSize: action.payload,
+          packets: state.traffic.packets.slice(-action.payload),
+          pendingPackets: state.traffic.pendingPackets.slice(-action.payload),
+        },
+      };
+    }
+    case 'traffic/ip-filter': {
+      return {
+        ...state,
+        traffic: {
+          ...state.traffic,
+          selectedIp: action.payload,
         },
       };
     }
@@ -494,6 +636,113 @@ export function AppProvider({ children }) {
       }
     };
 
+    const appendTrafficBatch = (packets) => {
+      if (!Array.isArray(packets) || !packets.length) return;
+      const lastTimestamp = packets.reduce((max, packet) => {
+        const ts = new Date(packet.timestamp).getTime();
+        return ts > max ? ts : max;
+      }, state.traffic.lastTimestamp || 0);
+      if (state.traffic.paused) {
+        dispatch({ type: 'traffic/pending', payload: { packets } });
+      } else {
+        dispatch({ type: 'traffic/append', payload: { packets, lastTimestamp } });
+      }
+    };
+
+    const flushTrafficQueue = () => {
+      dispatch({ type: 'traffic/flush', payload: { lastTimestamp: Date.now() } });
+    };
+
+    const selectTrafficPacket = (packetId, ip) => {
+      dispatch({ type: 'traffic/select', payload: { packetId, ip } });
+      if (ip) {
+        dispatch({ type: 'traffic/ip-filter', payload: ip });
+      }
+    };
+
+    const setTrafficFilters = (filters) => {
+      dispatch({ type: 'traffic/filters', payload: filters });
+    };
+
+    const setTrafficMode = (mode) => {
+      dispatch({ type: 'traffic/mode', payload: mode });
+    };
+
+    const setTrafficPollingInterval = (interval) => {
+      dispatch({ type: 'traffic/polling', payload: interval });
+    };
+
+    const setTrafficPaused = (paused) => {
+      dispatch({ type: 'traffic/paused', payload: paused });
+      if (!paused && state.traffic.pendingPackets.length) {
+        flushTrafficQueue();
+      }
+    };
+
+    const setTrafficBufferSize = (size) => {
+      dispatch({ type: 'traffic/buffer-size', payload: size });
+    };
+
+    const setTrafficIpFilter = (ip) => {
+      dispatch({ type: 'traffic/ip-filter', payload: ip });
+    };
+
+    const linkPacketToIncident = (packetId, incidentId, severity) => {
+      if (incidentId && cacheRef.current.incidentDetails.has(incidentId)) {
+        const cached = cacheRef.current.incidentDetails.get(incidentId);
+        cacheRef.current.incidentDetails.set(incidentId, { ...cached, linkedPacketId: packetId });
+      }
+      dispatch({ type: 'traffic/link', payload: { packetId, incidentId, severity } });
+    };
+
+    const loadPacketDetail = async (packetId) => {
+      try {
+        const detail = await fetchPacketDetail(packetId, state.settings.apiBaseUrl);
+        return detail;
+      } catch (error) {
+        addToast({
+          title: 'No se pudo obtener el detalle del paquete',
+          description: error.message || 'Intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
+    };
+
+    const requestRecentTraffic = async ({ since, limit }) => {
+      try {
+        const packets = await fetchRecentTraffic({ since, limit }, state.settings.apiBaseUrl);
+        return packets;
+      } catch (error) {
+        addToast({
+          title: 'No se pudo actualizar el tráfico',
+          description: error.message || 'Revisa la conexión al backend.',
+          tone: 'warn',
+        });
+        throw error;
+      }
+    };
+
+    const createIncidentFromPacketAction = async ({ packetId, reason, severity }) => {
+      try {
+        const result = await createIncidentFromPacket({ packetId, reason, severity }, state.settings.apiBaseUrl);
+        linkPacketToIncident(packetId, result.incidentId, severity);
+        addToast({
+          title: 'Incidente generado',
+          description: `Se creó el incidente ${result.incidentId} a partir del paquete seleccionado.`,
+          tone: 'success',
+        });
+        return result;
+      } catch (error) {
+        addToast({
+          title: 'No se pudo crear el incidente',
+          description: error.message || 'Intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
+    };
+
     return {
       addToast,
       dismissToast,
@@ -509,8 +758,21 @@ export function AppProvider({ children }) {
       authHandleReturn,
       authVerifyTotp,
       authLogout,
+      appendTrafficBatch,
+      flushTrafficQueue,
+      selectTrafficPacket,
+      setTrafficFilters,
+      setTrafficMode,
+      setTrafficPollingInterval,
+      setTrafficPaused,
+      setTrafficBufferSize,
+      setTrafficIpFilter,
+      linkPacketToIncident,
+      loadPacketDetail,
+      requestRecentTraffic,
+      createIncidentFromPacketAction,
     };
-  }, [state.settings]);
+  }, [state.settings, state.traffic, state.incidents]);
 
   return createElement(
     AppStateContext.Provider,
