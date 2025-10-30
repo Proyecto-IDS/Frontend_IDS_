@@ -150,14 +150,16 @@ function Login({ params = {} }) {
           <label htmlFor="totp-code">Código TOTP</label>
           <input
             id="totp-code"
+            type="text"
             inputMode="numeric"
-            pattern="\\d{6}"
             maxLength={6}
+            minLength={6}
             value={totpCode}
             onChange={handleTotpInput}
             autoComplete="one-time-code"
             placeholder="000000"
             className={totpError ? 'has-error' : ''}
+            aria-invalid={totpError ? 'true' : 'false'}
             required
           />
           <p className="totp-hint">El código vence cada 30 segundos.</p>
