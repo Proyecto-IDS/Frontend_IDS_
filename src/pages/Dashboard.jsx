@@ -2,10 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import StatCard from '../components/StatCard.jsx';
-import Table from '../components/Table.jsx';
-import Tag from '../components/Tag.jsx';
-import Pill from '../components/Pill.jsx';
 import SearchBox from '../components/SearchBox.jsx';
+import MonitorTraffic from '../components/MonitorTraffic/MonitorTraffic.jsx';
 
 const statusOptions = [
   { value: '', label: 'Todos' },
@@ -22,28 +20,8 @@ const severityOptions = [
   { value: 'baja', label: 'Bajas' },
 ];
 
-const statusTone = {
-  conocido: 'success',
-  'no-conocido': 'warn',
-  'falso-positivo': 'info',
-  cerrado: 'muted',
-  contenido: 'success',
-};
-
-const severityTone = {
-  critica: 'danger',
-  alta: 'warn',
-  media: 'info',
-  baja: 'success',
-};
-
-const formatDateTime = (value) => {
-  if (!value) return '—';
-  return new Date(value).toLocaleString();
-};
-
 function Dashboard() {
-  const { incidents, loading } = useAppState();
+  const { incidents } = useAppState();
   const { loadIncidents } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
@@ -83,32 +61,6 @@ function Dashboard() {
       },
     ];
   }, [incidents]);
-
-  const columns = useMemo(
-    () => [
-      { key: 'id', label: 'ID' },
-      { key: 'type', label: 'Tipo' },
-      { key: 'source', label: 'Origen' },
-      {
-        key: 'status',
-        label: 'Estado',
-        render: (value) => <Tag tone={statusTone[value] || 'neutral'}>{value}</Tag>,
-      },
-      {
-        key: 'severity',
-        label: 'Severidad',
-        render: (value) => <Pill tone={severityTone[value] || 'neutral'}>{value}</Pill>,
-      },
-      {
-        key: 'createdAt',
-        label: 'Detectado',
-        render: (value) => (
-          <time dateTime={value}>{new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
-        ),
-      },
-    ],
-    [],
-  );
 
   const handleRangeChange = (field, value) => {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -190,18 +142,25 @@ function Dashboard() {
         ))}
       </section>
 
+      <MonitorTraffic />
+
+      <section className="alerts-placeholder" aria-live="polite">
+        <h3>Alertas de incidentes</h3>
+        <p>Conecta el backend para recibir aquí las alertas vinculadas a paquetes y eventos críticos.</p>
+      </section>
+
       <section className="table-section">
         <header>
           <h3>Incidentes recientes</h3>
-          <span>{incidents.length} registros</span>
+          <span>Mock visual</span>
         </header>
-        <Table
-          columns={columns}
-          data={incidents}
-          loading={loading.incidents}
-          onRowClick={(row) => navigate(getRouteHash('incident', { id: row.id }))}
-          emptyMessage="No se encontraron incidentes con los filtros actuales."
-        />
+        <div className="placeholder-card">
+          <p>
+            Aquí se integrará la tabla completa de incidentes cuando el backend esté disponible. En la versión final podrás
+            navegar a cada incidente, actualizar estados y sincronizar con el monitor de tráfico.
+          </p>
+          <p className="placeholder-hint">Configura `apiBaseUrl` y sustituye este mock por la tabla real.</p>
+        </div>
       </section>
     </div>
   );
