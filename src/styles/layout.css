@@ -64,6 +64,10 @@ button:disabled {
   background: var(--bg);
 }
 
+.app-shell.is-auth-view {
+  grid-template-columns: 1fr;
+}
+
 .app-shell.is-nav-collapsed {
   grid-template-columns: 72px 1fr;
 }

@@ -6,6 +6,10 @@ import {
   openWarRoomSession,
   fetchWarRoomMessages,
   postWarRoomMessage,
+  authStartGoogle as apiAuthStartGoogle,
+  authFetchMe as apiAuthFetchMe,
+  authVerifyTotp as apiAuthVerifyTotp,
+  authLogout as apiAuthLogout,
 } from './api.js';
 
 const AppStateContext = createContext(null);
@@ -48,6 +52,13 @@ const initialState = {
     incidents: false,
     incident: false,
     warRoom: false,
+  },
+  auth: {
+    user: null,
+    loading: false,
+    error: null,
+    mfaRequired: false,
+    mfaTicket: null,
   },
 };
 
@@ -113,6 +124,62 @@ function reducer(state, action) {
         warRooms: {
           ...state.warRooms,
           [id]: { ...existing, checklist },
+        },
+      };
+    }
+    case 'auth/loading': {
+      return {
+        ...state,
+        auth: {
+          ...state.auth,
+          loading: action.payload,
+          error: action.payload ? null : state.auth.error,
+        },
+      };
+    }
+    case 'auth/error': {
+      return {
+        ...state,
+        auth: {
+          ...state.auth,
+          loading: false,
+          error: action.payload,
+        },
+      };
+    }
+    case 'auth/success': {
+      return {
+        ...state,
+        auth: {
+          user: action.payload,
+          loading: false,
+          error: null,
+          mfaRequired: false,
+          mfaTicket: null,
+        },
+      };
+    }
+    case 'auth/mfa': {
+      return {
+        ...state,
+        auth: {
+          ...state.auth,
+          loading: false,
+          error: null,
+          mfaRequired: true,
+          mfaTicket: action.payload.ticket,
+        },
+      };
+    }
+    case 'auth/logout': {
+      return {
+        ...state,
+        auth: {
+          user: null,
+          loading: false,
+          error: null,
+          mfaRequired: false,
+          mfaTicket: null,
         },
       };
     }
@@ -321,6 +388,112 @@ export function AppProvider({ children }) {
       return next;
     };
 
+    const authStartGoogle = async () => {
+      dispatch({ type: 'auth/loading', payload: true });
+      try {
+        if (state.settings.apiBaseUrl) {
+          const url = new URL('/auth/google/start', state.settings.apiBaseUrl);
+          dispatch({ type: 'auth/loading', payload: false });
+          window.location.href = url.toString();
+          return { redirected: true };
+        }
+        await apiAuthStartGoogle(state.settings.apiBaseUrl);
+        dispatch({ type: 'auth/loading', payload: false });
+        addToast({
+          title: 'OAuth simulado',
+          description: 'Usa el código 123456 para completar el segundo factor en el entorno mock.',
+          tone: 'info',
+        });
+        return { mock: true };
+      } catch (error) {
+        dispatch({ type: 'auth/error', payload: error.message });
+        addToast({
+          title: 'No se pudo iniciar sesión',
+          description: error.message || 'Intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
+    };
+
+    const authHandleReturn = async () => {
+      dispatch({ type: 'auth/loading', payload: true });
+      try {
+        const result = await apiAuthFetchMe(state.settings.apiBaseUrl);
+        if (result && result.mfa_required && result.mfa_ticket) {
+          dispatch({ type: 'auth/mfa', payload: { ticket: result.mfa_ticket } });
+          addToast({
+            title: 'Autenticación adicional requerida',
+            description: 'Introduce el código de tu aplicación TOTP.',
+            tone: 'warn',
+          });
+          return { mfaRequired: true, ticket: result.mfa_ticket };
+        }
+        if (result && result.id) {
+          dispatch({ type: 'auth/success', payload: result });
+          addToast({
+            title: 'Sesión iniciada',
+            description: `Bienvenido, ${result.name || result.email}`,
+            tone: 'success',
+          });
+          return { user: result };
+        }
+        dispatch({ type: 'auth/logout' });
+        return null;
+      } catch (error) {
+        dispatch({ type: 'auth/error', payload: error.message });
+        addToast({
+          title: 'No se pudo validar la sesión',
+          description: error.message || 'Intenta iniciar nuevamente.',
+          tone: 'danger',
+        });
+        return null;
+      }
+    };
+
+    const authVerifyTotp = async (ticket, code) => {
+      dispatch({ type: 'auth/loading', payload: true });
+      try {
+        await apiAuthVerifyTotp(ticket, code, state.settings.apiBaseUrl);
+        const user = await apiAuthFetchMe(state.settings.apiBaseUrl);
+        if (user && user.id) {
+          dispatch({ type: 'auth/success', payload: user });
+          addToast({
+            title: 'TOTP verificado',
+            description: 'Autenticación en dos pasos completada.',
+            tone: 'success',
+          });
+          return { user };
+        }
+        dispatch({ type: 'auth/logout' });
+        return null;
+      } catch (error) {
+        dispatch({ type: 'auth/error', payload: error.message });
+        addToast({
+          title: 'Código inválido',
+          description: error.message || 'Revisa el código e intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
+    };
+
+    const authLogout = async () => {
+      dispatch({ type: 'auth/loading', payload: true });
+      try {
+        await apiAuthLogout(state.settings.apiBaseUrl);
+      } catch (error) {
+        console.warn('Fallo al cerrar sesión en backend. Se limpiará el estado local.', error);
+      } finally {
+        dispatch({ type: 'auth/logout' });
+        addToast({
+          title: 'Sesión cerrada',
+          description: 'Has cerrado sesión correctamente.',
+          tone: 'info',
+        });
+      }
+    };
+
     return {
       addToast,
       dismissToast,
@@ -332,6 +505,10 @@ export function AppProvider({ children }) {
       sendWarRoomMessage,
       updateWarRoomChecklist,
       saveSettings,
+      authStartGoogle,
+      authHandleReturn,
+      authVerifyTotp,
+      authLogout,
     };
   }, [state.settings]);
 

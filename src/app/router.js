@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
+import Loader from '../components/Loader.jsx';
+import { useAppState } from './state.js';
 
 const ROUTES = [
   {
@@ -7,6 +9,15 @@ const ROUTES = [
     pattern: /^#?\/?$/,
     loader: () => import('../pages/Dashboard.jsx'),
     mapParams: () => ({}),
+    private: true,
+  },
+  {
+    key: 'login',
+    path: '#/login',
+    pattern: /^#\/login(?:\?(.*))?$/,
+    loader: () => import('../pages/Login.jsx'),
+    mapParams: (match) => ({ query: match[1] || '' }),
+    private: false,
   },
   {
     key: 'incident',
@@ -14,6 +25,7 @@ const ROUTES = [
     pattern: /^#\/incident\/([^/]+)$/,
     loader: () => import('../pages/IncidentDetail.jsx'),
     mapParams: (match) => ({ id: decodeURIComponent(match[1]) }),
+    private: true,
   },
   {
     key: 'war-room',
@@ -21,6 +33,7 @@ const ROUTES = [
     pattern: /^#\/war-room\/([^/]+)$/,
     loader: () => import('../pages/WarRoom.jsx'),
     mapParams: (match) => ({ id: decodeURIComponent(match[1]) }),
+    private: true,
   },
   {
     key: 'settings',
@@ -28,6 +41,7 @@ const ROUTES = [
     pattern: /^#\/settings$/,
     loader: () => import('../pages/Settings.jsx'),
     mapParams: () => ({}),
+    private: true,
   },
 ];
 
@@ -49,6 +63,7 @@ function matchRoute(hash) {
         load: route.loader,
         path: route.path,
         hash: normalized,
+        private: Boolean(route.private),
       };
     }
   }
@@ -58,6 +73,7 @@ function matchRoute(hash) {
     load: DEFAULT_ROUTE.loader,
     path: DEFAULT_ROUTE.path,
     hash: DEFAULT_ROUTE.path,
+    private: Boolean(DEFAULT_ROUTE.private),
   };
 }
 
@@ -67,7 +83,9 @@ export function navigate(to) {
 }
 
 export function useRoute() {
-  const [route, setRoute] = useState(() => matchRoute(typeof window !== 'undefined' ? window.location.hash : '#/'));
+  const [route, setRoute] = useState(() =>
+    matchRoute(typeof window !== 'undefined' ? window.location.hash : '#/'),
+  );
   const [Component, setComponent] = useState(null);
   const [error, setError] = useState(null);
 
@@ -117,7 +135,33 @@ export function getRouteHash(key, params = {}) {
       return `#/war-room/${encodeURIComponent(params.id)}`;
     case 'settings':
       return '#/settings';
+    case 'login':
+      return params.query ? `#/login?${params.query}` : '#/login';
     default:
       return '#/';
   }
+}
+
+function RequireAuthGate({ render }) {
+  const { auth } = useAppState();
+
+  useEffect(() => {
+    if (!auth.loading && !auth.user) {
+      navigate('#/login');
+    }
+  }, [auth.loading, auth.user]);
+
+  if (auth.loading) {
+    return createElement(Loader, { label: 'Validando sesión' });
+  }
+
+  if (!auth.user) {
+    return createElement(Loader, { label: 'Redirigiendo a login' });
+  }
+
+  return render();
+}
+
+export function requireAuth(render) {
+  return createElement(RequireAuthGate, { render });
 }

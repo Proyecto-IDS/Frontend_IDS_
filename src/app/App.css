@@ -45,6 +45,11 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+.auth-main {
+  justify-content: center;
+  align-items: center;
+}
+
 @media (max-width: 960px) {
   .war-room-layout {
     flex-direction: column;

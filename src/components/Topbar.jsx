@@ -12,8 +12,19 @@ const Topbar = memo(function Topbar({
   theme = 'auto',
   onThemeCycle,
   onMenuToggle,
-  children,
+  user,
+  onLogout,
+  authLoading = false,
 }) {
+  const initials = user?.name
+    ? user.name
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : user?.email?.slice(0, 2)?.toUpperCase();
+
   return (
     <header className="topbar" role="banner">
       <div className="topbar-meta">
@@ -26,7 +37,6 @@ const Topbar = memo(function Topbar({
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
       <div className="topbar-actions">
-        {children}
         <button
           type="button"
           className="btn subtle"
@@ -35,6 +45,28 @@ const Topbar = memo(function Topbar({
         >
           {themeLabels[theme] || 'Tema'}
         </button>
+        {user ? (
+          <div className="topbar-user">
+            {user.picture ? (
+              <img src={user.picture} alt={user.name || user.email} />
+            ) : (
+              <span aria-hidden="true">{initials}</span>
+            )}
+            <div className="user-meta">
+              <strong>{user.name || user.email}</strong>
+              {user.email ? <span>{user.email}</span> : null}
+            </div>
+            <button
+              type="button"
+              className="btn subtle"
+              onClick={onLogout}
+              disabled={authLoading}
+              aria-label="Cerrar sesión"
+            >
+              {authLoading ? '...' : 'Salir'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </header>
   );
