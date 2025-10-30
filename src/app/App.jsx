@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAppActions, useAppState } from './state.js';
-import { getRouteHash, navigate, useRoute } from './router.js';
+import { getRouteHash, navigate, requireAuth, useRoute } from './router.js';
 import Sidebar from '../components/Sidebar.jsx';
 import Topbar from '../components/Topbar.jsx';
 import Toast from '../components/Toast.jsx';
@@ -31,11 +31,12 @@ const themeOrder = ['auto', 'light', 'dark'];
 
 function App() {
   const route = useRoute();
-  const { toasts, settings } = useAppState();
-  const { dismissToast, saveSettings } = useAppActions();
+  const { toasts, settings, auth } = useAppState();
+  const { dismissToast, saveSettings, authLogout } = useAppActions();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const meta = pageMeta[route.key] || pageMeta.dashboard;
+  const isAuthRoute = route.key === 'login';
 
   const content = useMemo(() => {
     if (route.error) {
@@ -57,7 +58,8 @@ function App() {
     }
 
     const Page = route.Component;
-    return <Page params={route.params} />;
+    const renderPage = () => <Page params={route.params} />;
+    return route.private ? requireAuth(renderPage) : renderPage();
   }, [route]);
 
   const handleThemeCycle = () => {
@@ -71,22 +73,33 @@ function App() {
   };
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'is-nav-collapsed' : ''}`}>
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((value) => !value)}
-        activeKey={route.key}
-        onNavigate={handleNavigate}
-      />
-      <div className="app-workspace">
-        <Topbar
-          title={meta.title}
-          subtitle={meta.subtitle}
-          theme={settings.theme}
-          onThemeCycle={handleThemeCycle}
-          onMenuToggle={() => setSidebarCollapsed((value) => !value)}
+    <div
+      className={`app-shell ${sidebarCollapsed ? 'is-nav-collapsed' : ''} ${
+        isAuthRoute ? 'is-auth-view' : ''
+      }`}
+    >
+      {!isAuthRoute && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((value) => !value)}
+          activeKey={route.key}
+          onNavigate={handleNavigate}
         />
-        <main className="app-main" role="main">
+      )}
+      <div className="app-workspace">
+        {!isAuthRoute && (
+          <Topbar
+            title={meta.title}
+            subtitle={meta.subtitle}
+            theme={settings.theme}
+            onThemeCycle={handleThemeCycle}
+            onMenuToggle={() => setSidebarCollapsed((value) => !value)}
+            user={auth.user}
+            onLogout={authLogout}
+            authLoading={auth.loading}
+          />
+        )}
+        <main className={`app-main ${isAuthRoute ? 'auth-main' : ''}`} role="main">
           {content}
         </main>
       </div>

@@ -7,6 +7,7 @@ Interfaz React ligera para un sistema de detección de intrusos (IDS) universita
 - Arquitectura simple sin dependencias de UI ni routers externos.
 - Router propio basado en `window.location.hash` con `import()` dinámico para cada página.
 - Contexto global con React que administra incidentes, ajustes, toasts y mesas de trabajo, con persistencia en `localStorage`.
+- Flujo de autenticación con inicio de sesión en Google y verificación TOTP opcional (mock listo con código 123456).
 - Integración REST encapsulada con `fetch` y fallback a un mock con latencia simulada.
 - Componentes accesibles (focus visible, navegación por teclado, uso de `aria-live`).
 - Estilos modernos con CSS nativo, variables, temas claro/oscuro (`prefers-color-scheme`) y responsive.
@@ -33,6 +34,11 @@ El archivo `src/app/state.js` carga la configuración guardada en `localStorage`
 3. Guarda los cambios; la preferencia queda persistida.
 
 Con `apiBaseUrl` vacío, todas las llamadas usan los datos mock y el chat IA simulado.
+
+### Credenciales mock
+
+- Login: navega a `#/login` y presiona **Continuar con Google**. El flujo mock solicitará un código TOTP.
+- Código TOTP mock: `123456`.
 
 ## Estructura relevante
 

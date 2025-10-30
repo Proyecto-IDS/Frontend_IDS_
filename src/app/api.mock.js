@@ -61,6 +61,14 @@ const mockDb = {
   warRoomMessages: new Map(),
 };
 
+const mockAuthState = {
+  user: null,
+  pendingTicket: null,
+  requireMfa: true,
+  email: 'analista@ids.campus',
+  name: 'Analista IDS',
+};
+
 const ensureWarRoom = (incidentId) => {
   if (mockDb.warRooms.has(incidentId)) {
     return mockDb.warRooms.get(incidentId);
@@ -195,5 +203,51 @@ export async function mockPostWarRoomMessage(warRoomId, payload) {
     messages.push(assistantMessage);
     mockDb.warRoomMessages.set(warRoomId, messages);
     return clone({ userMessage, assistantMessage });
+  });
+}
+
+export async function mockAuthStartGoogle() {
+  return withLatency(() => {
+    mockAuthState.pendingTicket = 'mock-ticket';
+    return { initiated: true };
+  });
+}
+
+export async function mockAuthFetchMe() {
+  return withLatency(() => {
+    if (mockAuthState.user) {
+      return clone(mockAuthState.user);
+    }
+    if (mockAuthState.pendingTicket) {
+      return { mfa_required: true, mfa_ticket: mockAuthState.pendingTicket };
+    }
+    return null;
+  });
+}
+
+export async function mockAuthVerifyTotp(ticket, code) {
+  return withLatency(() => {
+    if (!mockAuthState.pendingTicket || ticket !== mockAuthState.pendingTicket) {
+      throw new Error('Ticket inválido o expirado');
+    }
+    if (code !== '123456') {
+      throw new Error('Código incorrecto. Usa 123456 en el mock.');
+    }
+    mockAuthState.user = {
+      id: 'user-1',
+      email: mockAuthState.email,
+      name: mockAuthState.name,
+      picture: 'https://avatars.dicebear.com/api/initials/IDS.svg',
+    };
+    mockAuthState.pendingTicket = null;
+    return { authenticated: true };
+  });
+}
+
+export async function mockAuthLogout() {
+  return withLatency(() => {
+    mockAuthState.user = null;
+    mockAuthState.pendingTicket = null;
+    return { ok: true };
   });
 }

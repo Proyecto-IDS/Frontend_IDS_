@@ -5,6 +5,10 @@ import {
   mockOpenWarRoom,
   mockFetchWarRoomMessages,
   mockPostWarRoomMessage,
+  mockAuthStartGoogle,
+  mockAuthFetchMe,
+  mockAuthVerifyTotp,
+  mockAuthLogout,
 } from './api.mock.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
@@ -100,4 +104,54 @@ export async function postWarRoomMessage(warRoomId, payload, baseUrl) {
     body: JSON.stringify(payload),
   });
   return handleResponse(response);
+}
+
+export async function authStartGoogle(baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockAuthStartGoogle();
+  }
+  const url = toUrl(baseUrl, '/auth/google/start');
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse(response);
+}
+
+export async function authFetchMe(baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockAuthFetchMe();
+  }
+  const url = toUrl(baseUrl, '/auth/me');
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse(response);
+}
+
+export async function authVerifyTotp(ticket, code, baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockAuthVerifyTotp(ticket, code);
+  }
+  const url = toUrl(baseUrl, '/auth/mfa/verify');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    credentials: 'include',
+    body: JSON.stringify({ ticket, code }),
+  });
+  return handleResponse(response);
+}
+
+export async function authLogout(baseUrl) {
+  if (!hasBackend(baseUrl)) {
+    return mockAuthLogout();
+  }
+  const url = toUrl(baseUrl, '/auth/logout');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  await handleResponse(response);
 }
