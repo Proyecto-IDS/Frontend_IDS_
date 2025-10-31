@@ -1,12 +1,12 @@
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useEffect, useRef, useState } from 'react';
 import Loader from '../components/Loader.jsx';
-import { useAppState } from './state.js';
+import { useAppActions, useAppState } from './state.js';
 
 const ROUTES = [
   {
     key: 'dashboard',
-    path: '#/',
-    pattern: /^#?\/?$/,
+    path: '#/dashboard',
+    pattern: /^#\/(?:dashboard)?$/,
     loader: () => import('../pages/Dashboard.jsx'),
     mapParams: () => ({}),
     private: true,
@@ -128,7 +128,7 @@ export function useRoute() {
 export function getRouteHash(key, params = {}) {
   switch (key) {
     case 'dashboard':
-      return '#/';
+      return '#/dashboard';
     case 'incident':
       return `#/incident/${encodeURIComponent(params.id)}`;
     case 'war-room':
@@ -144,14 +144,23 @@ export function getRouteHash(key, params = {}) {
 
 function RequireAuthGate({ render }) {
   const { auth } = useAppState();
+  const { authHandleReturn } = useAppActions();
+  const hasAttemptedRef = useRef(false);
 
   useEffect(() => {
-    if (!auth.loading && !auth.user) {
-      navigate('#/login');
+    if (!auth.user && !auth.loading && !hasAttemptedRef.current) {
+      hasAttemptedRef.current = true;
+      authHandleReturn()
+        .then((result) => {
+          if (!result || !result.user) {
+            navigate('#/login');
+          }
+        })
+        .catch(() => navigate('#/login'));
     }
-  }, [auth.loading, auth.user]);
+  }, [auth.loading, auth.user, authHandleReturn]);
 
-  if (auth.loading) {
+  if (auth.loading || (!auth.user && !hasAttemptedRef.current)) {
     return createElement(Loader, { label: 'Validando sesión' });
   }
 

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import StatCard from '../components/StatCard.jsx';
+import Table from '../components/Table.jsx';
+import Tag from '../components/Tag.jsx';
+import Pill from '../components/Pill.jsx';
 import SearchBox from '../components/SearchBox.jsx';
 import MonitorTraffic from '../components/MonitorTraffic/MonitorTraffic.jsx';
 
@@ -20,9 +23,24 @@ const severityOptions = [
   { value: 'baja', label: 'Bajas' },
 ];
 
+const statusTone = {
+  conocido: 'success',
+  'no-conocido': 'warn',
+  'falso-positivo': 'info',
+  cerrado: 'muted',
+  contenido: 'success',
+};
+
+const severityTone = {
+  critica: 'danger',
+  alta: 'warn',
+  media: 'info',
+  baja: 'success',
+};
+
 function Dashboard() {
-  const { incidents } = useAppState();
-  const { loadIncidents } = useAppActions();
+  const { incidents, loading, traffic } = useAppState();
+  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
     status: '',
@@ -62,8 +80,65 @@ function Dashboard() {
     ];
   }, [incidents]);
 
+  const columns = useMemo(
+    () => [
+      { key: 'id', label: 'ID' },
+      { key: 'type', label: 'Tipo' },
+      { key: 'source', label: 'Origen' },
+      {
+        key: 'status',
+        label: 'Estado',
+        render: (value) => <Tag tone={statusTone[value] || 'neutral'}>{value}</Tag>,
+      },
+      {
+        key: 'severity',
+        label: 'Severidad',
+        render: (value) => <Pill tone={severityTone[value] || 'neutral'}>{value}</Pill>,
+      },
+      {
+        key: 'detection',
+        label: 'Detección',
+        render: (_, row) => {
+          const modelLabel = row.detection?.model_label;
+          const modelScore = row.detection?.model_score;
+          const modelVersion = row.detection?.model_version;
+          if (!modelLabel) return '—';
+          return `${modelLabel}${modelScore !== undefined ? ` (${modelScore})` : ''}${
+            modelVersion ? ` · v${modelVersion}` : ''
+          }`;
+        },
+      },
+      {
+        key: 'createdAt',
+        label: 'Detectado',
+        render: (value) => (
+          <time dateTime={value}>{new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const displayIncidents = useMemo(() => {
+    if (!traffic.selectedIp) return incidents;
+    const target = traffic.selectedIp.toLowerCase();
+    return incidents.filter((incident) => {
+      const matchesSource = (incident.source || '').toLowerCase().includes(target);
+      const matchesNotes = (incident.notes || '').toLowerCase().includes(target);
+      const matchesAssets = Array.isArray(incident.relatedAssets)
+        ? incident.relatedAssets.some((asset) => asset.toLowerCase().includes(target))
+        : false;
+      return matchesSource || matchesNotes || matchesAssets;
+    });
+  }, [incidents, traffic.selectedIp]);
+
   const handleRangeChange = (field, value) => {
     setFilters((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleClearTrafficFilter = () => {
+    setTrafficIpFilter(null);
+    selectTrafficPacket(null, null);
   };
 
   return (
@@ -152,15 +227,25 @@ function Dashboard() {
       <section className="table-section">
         <header>
           <h3>Incidentes recientes</h3>
-          <span>Mock visual</span>
+          <span>{displayIncidents.length} registros</span>
         </header>
-        <div className="placeholder-card">
-          <p>
-            Aquí se integrará la tabla completa de incidentes cuando el backend esté disponible. En la versión final podrás
-            navegar a cada incidente, actualizar estados y sincronizar con el monitor de tráfico.
-          </p>
-          <p className="placeholder-hint">Configura `apiBaseUrl` y sustituye este mock por la tabla real.</p>
-        </div>
+        {traffic.selectedIp ? (
+          <div className="traffic-filter-banner">
+            <span>
+              Filtrando por IP <strong>{traffic.selectedIp}</strong>
+            </span>
+            <button type="button" className="btn subtle" onClick={handleClearTrafficFilter}>
+              Limpiar filtro
+            </button>
+          </div>
+        ) : null}
+        <Table
+          columns={columns}
+          data={displayIncidents}
+          loading={loading.incidents}
+          onRowClick={(row) => navigate(getRouteHash('incident', { id: row.id }))}
+          emptyMessage="No se encontraron incidentes con los filtros actuales."
+        />
       </section>
     </div>
   );

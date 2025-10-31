@@ -1,88 +1,49 @@
-# IDS Campus Frontend
+# IDS Campus Frontend (2025)
 
-Interfaz React ligera para un sistema de detección de intrusos (IDS) universitario. Implementa un dashboard operativo, detalle de incidentes, mesa de trabajo colaborativa y panel de configuración, lista para conectarse con un backend REST.
+Interfaz React minimalista para el IDS universitario. La UI trabaja únicamente con React 19 + CSS nativo y está preparada para conectar un backend REST/WebSocket cuando esté disponible.
 
-## Características
+## Vista rápida
 
-- Arquitectura simple sin dependencias de UI ni routers externos.
-- Router propio basado en `window.location.hash` con `import()` dinámico para cada página.
-- Contexto global con React que administra incidentes, ajustes, toasts y mesas de trabajo, con persistencia en `localStorage`.
-- Flujo de autenticación con inicio de sesión en Google y verificación TOTP opcional (mock listo con código 123456).
-- Integración REST encapsulada con `fetch` y fallback a un mock con latencia simulada.
-- Componentes accesibles (focus visible, navegación por teclado, uso de `aria-live`).
-- Estilos modernos con CSS nativo, variables, temas claro/oscuro (`prefers-color-scheme`) y responsive.
-- Monitor de tráfico en tiempo real con WebSocket/polling, resaltado de alertas y sincronización con la tabla de incidentes.
+- **Dashboard** con métricas rápidas, monitor de tráfico (wireframe por defecto o en vivo si se activa), alertas y tabla de incidentes.
+- **Detalle de incidentes**, **Mesa de trabajo** (chat polling + checklist) y **Configuración** (persistente en `localStorage`).
+- **Autenticación**: flujo Google Sign-In → `auth/me` → TOTP opcional.
+- **Mocks** incluidos para trabajar sin backend (`VITE_USE_MOCKS=true`).
 
-## Requisitos
+## Estado actual del frontend
 
-- Node.js 18+
+| Dominio | Implementado | Notas para backend |
+|---------|--------------|--------------------|
+| Auth | Botón Google → `GET /auth/google/start` (redirect); `auth/me`, `auth/mfa/verify`, `auth/logout`. | Responder con usuario o `mfa_required`. Usa cookies (`credentials: 'include'`). |
+| Incidentes | Listado + detalle + acciones (`close_fp`, `escalate`, `mark_contained`). | Endpoints: `GET /incidents`, `GET /incidents/:id`, `POST /incidents/:id/actions`, `POST /incidents/:id/war-room`, `POST /incidents/from-packet`. |
+| War Room | Chat polling + checklist + “marcar contenido”. | `GET /war-room/:id/messages`, `POST /war-room/:id/messages`. |
+| Monitor tráfico | Wireframe por defecto. Modo live: WebSocket `traffic/stream`, fallback `GET /traffic/recent`, detalle `GET /traffic/packets/:id`, creación de incidente. | Habilitar con `VITE_MONITOR_ENABLED=true`. Mensajes: `packet_batch`, `packet`, `alert`. |
+| Toasts / UI | Feedback global con `addToast` (success/warn/danger). | Responder con mensajes claros para mostrar al usuario. |
+| Settings | `settings.apiBaseUrl`, `theme`, notificaciones; persistido en `localStorage`. | Actualiza esta URL para apuntar al backend real. |
+
+## Variables de entorno (opcional `/.env.local`)
+
+```
+VITE_USE_MOCKS=true            # Usa mocks sin backend
+VITE_MONITOR_ENABLED=true      # Activa monitor WS/polling
+VITE_MOCK_TRAFFIC_SEED=120     # Paquetes iniciales mock
+VITE_MOCK_TRAFFIC_MIN_BATCH=1
+VITE_MOCK_TRAFFIC_MAX_BATCH=3
+VITE_MOCK_INCIDENT_LIMIT=5
+```
 
 ## Scripts
 
 ```bash
-npm install      # Instala dependencias
-npm run dev      # Levanta el entorno local en http://localhost:5173
-npm run build    # Genera build de producción
-npm run preview  # Sirve la build generada
+npm install
+npm run dev      # Vite dev server
+npm run build    # Build producción
+npm run preview  # Preview build
 ```
 
-## Configuración del backend
+## Próximos pasos sugeridos
 
-El archivo `src/app/state.js` carga la configuración guardada en `localStorage` (clave `ids-settings`). Por defecto las peticiones se sirven desde el mock (`src/app/api.mock.js`). Para apuntar a una API real:
+1. Configurar `apiBaseUrl` en Configuración o `.env` y activar `VITE_MONITOR_ENABLED` cuando el backend esté listo.
+2. Implementar WebSocket/REST en el backend según los contratos anteriores.
+3. Sustituir la tarjeta placeholder de “Incidentes recientes” por la tabla real conectada a `GET /incidents` cuando la API esté estable.
 
-1. Abre la sección **Configuración** dentro de la aplicación (`#/settings`).
-2. Define la URL base (por ejemplo `https://ids.campus.edu/api`).
-3. Guarda los cambios; la preferencia queda persistida.
-
-Con `apiBaseUrl` vacío, todas las llamadas usan los datos mock y el chat IA simulado.
-
-### Monitor de tráfico
-
-- WebSocket: el monitor se conecta a `wss://<apiBaseUrl>/traffic/stream`. Ajusta `settings.apiBaseUrl` para apuntar al backend.
-- Polling: puedes alternar a polling desde la UI (select en la barra del monitor) y elegir 1s/2s/5s como intervalo.
-- Mock: habilita `VITE_USE_MOCKS=true` (o deja `apiBaseUrl` vacío) para que el monitor use el generador `src/app/mocks/traffic.mock.js`.
-- El mock también se activa en modo polling; genera ~500 paquetes con alertas aleatorias y puedes crear incidentes desde los paquetes.
-- Por defecto el monitor se muestra como wireframe; activa `VITE_MONITOR_ENABLED=true` en el entorno para habilitar la captura en vivo.
-- Variables adicionales para mocks:
-  - `VITE_MOCK_TRAFFIC_SEED` (por defecto 120), `VITE_MOCK_TRAFFIC_MIN_BATCH` y `VITE_MOCK_TRAFFIC_MAX_BATCH` controlan el volumen simulado.
-  - `VITE_MOCK_INCIDENT_LIMIT` limita los incidentes mock (por defecto 5).
-
-### Credenciales mock
-
-- Login: navega a `#/login` y presiona **Continuar con Google**. El flujo mock solicitará un código TOTP.
-- Código TOTP mock: `123456`.
-
-## Estructura relevante
-
-```
-src/
-  app/
-    App.jsx           # Shell principal y layout
-    App.css
-    state.js          # Contexto global y acciones puras
-    api.js            # Funciones fetch al backend o mock
-    api.socket.js     # Helper WebSocket con fallback a mock
-    api.mock.js       # Dataset y latencia simulada
-    router.js         # Router hash con code-splitting manual
-    mocks/
-      traffic.mock.js # Generador de paquetes y alertas mock
-  pages/              # Dashboard, IncidentDetail, WarRoom, Settings
-  components/         # Topbar, Sidebar, Table, Toast, etc.
-  styles/
-    variables.css     # Tokens y temas
-    layout.css        # Reset y layout base
-    components.css    # Estilos reutilizables
-```
-
-## Accesibilidad y buenas prácticas
-
-- Navegación por teclado con foco visible total.
-- Uso de `aria-live="polite"` en la pila de toasts.
-- elementos `<button>` reales para acciones primarias/secundarias.
-- Contraste AA y transiciones suaves (`120ms`) en los componentes clave.
-
-## Extensiones sugeridas
-
-- Ajustar `api.mock.js` para emular nuevos endpoints o estados del IDS.
-- Integrar exportación CSV desde la tabla con la API nativa `Blob`.
-- Añadir pruebas E2E con Playwright/Cypress (sin dependencias UI externas).
+El frontend está listo para integrarse directamente: sólo falta apuntar a tus endpoints y, si lo deseas, ajustar los mocks para tu entorno de QA.

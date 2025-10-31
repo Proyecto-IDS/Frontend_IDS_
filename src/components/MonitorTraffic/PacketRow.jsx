@@ -30,6 +30,15 @@ const PacketRow = memo(function PacketRow({ packet, index, selected, onSelect, o
   }, [packet?.severity, packet?.incidentId, selected]);
 
   const alertLabel = packet.incidentId ? `Relacionado con ${packet.incidentId}` : undefined;
+  const modelLabel = packet.model_label || packet.detection?.model_label;
+  const modelScore = packet.model_score ?? packet.detection?.model_score;
+  const modelVersion = packet.model_version ?? packet.detection?.model_version;
+  const detectionDisplay = modelLabel ? `${modelLabel}${modelScore !== undefined ? ` (${modelScore})` : ''}` : '—';
+  const detectionTitle = modelLabel
+    ? `Modelo: ${modelLabel}${modelVersion ? ` · versión ${modelVersion}` : ''}${
+        modelScore !== undefined ? ` · score ${modelScore}` : ''
+      }`
+    : 'Sin datos de modelo';
 
   return (
     <button
@@ -53,6 +62,9 @@ const PacketRow = memo(function PacketRow({ packet, index, selected, onSelect, o
       </span>
       <span className="cell proto">{packet.proto}</span>
       <span className="cell len">{packet.length}</span>
+      <span className="cell detection" title={detectionTitle}>
+        {detectionDisplay}
+      </span>
       <span className="cell info">{packet.info}</span>
       <span className="cell alert" aria-label={alertLabel}>
         {packet.incidentId ? <span className="packet-alert">{packet.incidentId}</span> : null}

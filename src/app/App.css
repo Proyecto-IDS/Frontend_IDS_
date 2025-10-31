@@ -70,6 +70,45 @@
   color: var(--muted);
 }
 
+.traffic-filter-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(122, 162, 247, 0.08);
+  margin-bottom: var(--space);
+  font-size: 0.85rem;
+}
+
+.placeholder-card {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: var(--space-lg);
+  display: grid;
+  gap: var(--space);
+  box-shadow: var(--shadow);
+}
+
+.placeholder-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.placeholder-card .placeholder-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.connection-hint {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 @media (max-width: 960px) {
   .war-room-layout {
     flex-direction: column;
