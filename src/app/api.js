@@ -14,17 +14,20 @@ import {
   mockFetchRecentTraffic,
   mockFetchPacketDetail,
   mockCreateIncidentFromPacket,
+  createMockTrafficSocket,
 } from './mocks/traffic.mock.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
+const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
 
-const hasBackend = (baseUrl) => Boolean(baseUrl && baseUrl.trim().length);
+const shouldUseMock = (baseUrl) => USE_MOCKS || !baseUrl || !baseUrl.trim();
 
 const toUrl = (baseUrl, path, params) => {
-  const url = new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
+  const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const url = new URL(path.replace(/^\//, ''), normalized);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
+      if (value === undefined || value === null || value === '' || Number.isNaN(value)) return;
       url.searchParams.set(key, value);
     });
   }
@@ -43,163 +46,273 @@ const handleResponse = async (response) => {
   return response.text();
 };
 
-export async function fetchIncidents(filters, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockFetchIncidents(filters);
+const request = async (url, init = {}) => {
+  try {
+    const response = await fetch(url, {
+      credentials: 'include',
+      ...init,
+    });
+    return handleResponse(response);
+  } catch (error) {
+    throw new Error(error?.message || 'Error al conectar con el backend');
   }
-  const url = toUrl(baseUrl, '/incidents', {
-    query: filters?.query || '',
-    status: filters?.status || '',
-    severity: filters?.severity || '',
-    from: filters?.from || '',
-    to: filters?.to || '',
-    filter_by_ip: filters?.filterByIp || '',
-    packet_id: filters?.packetId || '',
-  });
-  const response = await fetch(url, { method: 'GET' });
-  return handleResponse(response);
-}
+};
 
-export async function fetchIncidentById(id, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockFetchIncidentById(id);
-  }
-  const url = toUrl(baseUrl, `/incidents/${id}`);
-  const response = await fetch(url, { method: 'GET' });
-  return handleResponse(response);
-}
-
-export async function postIncidentAction(id, action, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockPostIncidentAction(id, action);
-  }
-  const url = toUrl(baseUrl, `/incidents/${id}/actions`);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({ action }),
-  });
-  return handleResponse(response);
-}
-
-export async function openWarRoomSession(id, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockOpenWarRoom(id);
-  }
-  const url = toUrl(baseUrl, `/incidents/${id}/war-room`);
-  const response = await fetch(url, { method: 'POST' });
-  return handleResponse(response);
-}
-
-export async function fetchWarRoomMessages(warRoomId, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockFetchWarRoomMessages(warRoomId);
-  }
-  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
-  const response = await fetch(url, { method: 'GET' });
-  return handleResponse(response);
-}
-
-export async function postWarRoomMessage(warRoomId, payload, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockPostWarRoomMessage(warRoomId, payload);
-  }
-  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export async function fetchRecentTraffic({ since, limit }, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockFetchRecentTraffic({ since, limit });
-  }
-  const url = toUrl(baseUrl, '/traffic/recent', {
-    since: since || '',
-    limit: limit || 100,
-  });
-  const response = await fetch(url, {
-    method: 'GET',
-    credentials: 'include',
-  });
-  return handleResponse(response);
-}
-
-export async function fetchPacketDetail(packetId, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockFetchPacketDetail(packetId);
-  }
-  const url = toUrl(baseUrl, `/traffic/packets/${packetId}`);
-  const response = await fetch(url, {
-    method: 'GET',
-    credentials: 'include',
-  });
-  return handleResponse(response);
-}
-
-export async function createIncidentFromPacket(data, baseUrl) {
-  if (!hasBackend(baseUrl)) {
-    return mockCreateIncidentFromPacket(data);
-  }
-  const url = toUrl(baseUrl, '/incidents/from-packet');
-  const response = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify(data),
-  });
-  return handleResponse(response);
-}
+// --- Autenticación --------------------------------------------------------
 
 export async function authStartGoogle(baseUrl) {
-  if (!hasBackend(baseUrl)) {
+  if (shouldUseMock(baseUrl)) {
     return mockAuthStartGoogle();
   }
   const url = toUrl(baseUrl, '/auth/google/start');
-  const response = await fetch(url, {
-    method: 'GET',
-    credentials: 'include',
-  });
-  return handleResponse(response);
+  window.location.href = url.toString();
+  return { redirected: true };
 }
 
-export async function authFetchMe(baseUrl) {
-  if (!hasBackend(baseUrl)) {
+export async function authHandleReturn(baseUrl) {
+  if (shouldUseMock(baseUrl)) {
     return mockAuthFetchMe();
   }
   const url = toUrl(baseUrl, '/auth/me');
-  const response = await fetch(url, {
-    method: 'GET',
-    credentials: 'include',
-  });
-  return handleResponse(response);
+  return request(url, { method: 'GET' });
 }
 
 export async function authVerifyTotp(ticket, code, baseUrl) {
-  if (!hasBackend(baseUrl)) {
+  if (shouldUseMock(baseUrl)) {
     return mockAuthVerifyTotp(ticket, code);
   }
   const url = toUrl(baseUrl, '/auth/mfa/verify');
-  const response = await fetch(url, {
+  return request(url, {
     method: 'POST',
     headers: DEFAULT_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({ ticket, code }),
   });
-  return handleResponse(response);
 }
 
 export async function authLogout(baseUrl) {
-  if (!hasBackend(baseUrl)) {
+  if (shouldUseMock(baseUrl)) {
     return mockAuthLogout();
   }
   const url = toUrl(baseUrl, '/auth/logout');
-  const response = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  await handleResponse(response);
+  return request(url, { method: 'POST' });
 }
+
+// --- Incidentes -----------------------------------------------------------
+
+export async function getIncidents(filters = {}, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockFetchIncidents(filters);
+  }
+  const url = toUrl(baseUrl, '/incidents', {
+    query: filters.query,
+    status: filters.status,
+    severity: filters.severity,
+    from: filters.from,
+    to: filters.to,
+    filter_by_ip: filters.filterByIp,
+    packet_id: filters.packetId,
+  });
+  return request(url, { method: 'GET' });
+}
+
+export async function getIncidentById(id, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockFetchIncidentById(id);
+  }
+  const url = toUrl(baseUrl, `/incidents/${id}`);
+  return request(url, { method: 'GET' });
+}
+
+export async function postIncidentAction(id, body, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockPostIncidentAction(id, body?.action);
+  }
+  const url = toUrl(baseUrl, `/incidents/${id}/actions`);
+  return request(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function postIncidentFromPacket(packetId, reason, severity, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockCreateIncidentFromPacket({ packetId, reason, severity });
+  }
+  const url = toUrl(baseUrl, '/incidents/from-packet');
+  return request(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({ packetId, reason, severity }),
+  });
+}
+
+export async function postIncidentWarRoom(id, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockOpenWarRoom(id);
+  }
+  const url = toUrl(baseUrl, `/incidents/${id}/war-room`);
+  return request(url, { method: 'POST' });
+}
+
+// --- War Room -------------------------------------------------------------
+
+export async function getWarRoomMessages(warRoomId, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockFetchWarRoomMessages(warRoomId);
+  }
+  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
+  return request(url, { method: 'GET' });
+}
+
+export async function postWarRoomMessage(warRoomId, message, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockPostWarRoomMessage(warRoomId, message);
+  }
+  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
+  return request(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify(message),
+  });
+}
+
+// --- Tráfico --------------------------------------------------------------
+
+export async function getTrafficRecent({ since, limit } = {}, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockFetchRecentTraffic({ since, limit });
+  }
+  const url = toUrl(baseUrl, '/traffic/recent', {
+    since,
+    limit,
+  });
+  return request(url, { method: 'GET' });
+}
+
+export async function getTrafficPacketById(packetId, baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockFetchPacketDetail(packetId);
+  }
+  const url = toUrl(baseUrl, `/traffic/packets/${packetId}`);
+  return request(url, { method: 'GET' });
+}
+
+// --- WebSocket ------------------------------------------------------------
+
+export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+  const useMock = shouldUseMock(baseUrl);
+
+  if (useMock) {
+    const socket = createMockTrafficSocket();
+    socket.onopen = () => onOpen?.();
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.type) {
+          onEvent?.(payload.type, payload);
+        }
+      } catch (error) {
+        console.warn('Mock packet parse error', error);
+      }
+    };
+    socket.onclose = () => onClose?.();
+    socket.onerror = (error) => onError?.(error);
+    return {
+      close() {
+        socket.close();
+      },
+    };
+  }
+
+  let closedExplicitly = false;
+  let currentSocket = null;
+  let retryTimer = null;
+
+  const buildWsUrl = () => {
+    const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    return normalized.replace(/^http/, 'ws') + '/traffic/stream';
+  };
+
+  const setupSocket = () => {
+    if (closedExplicitly) return;
+    try {
+      currentSocket = new WebSocket(buildWsUrl());
+    } catch (error) {
+      onError?.(error);
+      scheduleReconnect();
+      return;
+    }
+
+    currentSocket.addEventListener('open', () => {
+      onOpen?.();
+    });
+
+    currentSocket.addEventListener('message', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.type) {
+          onEvent?.(payload.type, payload);
+        }
+      } catch (error) {
+        console.warn('Traffic stream parse error', error);
+      }
+    });
+
+    currentSocket.addEventListener('close', () => {
+      onClose?.();
+      if (!closedExplicitly) {
+        scheduleReconnect();
+      }
+    });
+
+    currentSocket.addEventListener('error', () => {
+      onError?.();
+      if (!closedExplicitly) {
+        currentSocket?.close();
+      }
+    });
+  };
+
+  const scheduleReconnect = () => {
+    if (retryTimer || closedExplicitly) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      setupSocket();
+    }, 5000);
+  };
+
+  setupSocket();
+
+  return {
+    close() {
+      closedExplicitly = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      currentSocket?.close();
+    },
+  };
+}
+
+// --- Exports agrupados (legacy compatibility) -----------------------------
+
+export const api = {
+  authStartGoogle,
+  authHandleReturn,
+  authVerifyTotp,
+  authLogout,
+  getIncidents,
+  getIncidentById,
+  postIncidentAction,
+  postIncidentFromPacket,
+  postIncidentWarRoom,
+  getWarRoomMessages,
+  postWarRoomMessage,
+  getTrafficRecent,
+  getTrafficPacketById,
+  connectTrafficStream,
+};
+
+export default api;

@@ -10,6 +10,8 @@ const formatTimestamp = (value) => {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 10000);
+
 function WarRoom({ params }) {
   const warRoomId = params.id;
   const { warRooms, loading } = useAppState();
@@ -41,7 +43,7 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!warRoomId) return;
     loadWarRoomMessages(warRoomId);
-    const interval = window.setInterval(() => loadWarRoomMessages(warRoomId), 10000);
+    const interval = window.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
     return () => window.clearInterval(interval);
   }, [warRoomId, loadWarRoomMessages]);
 

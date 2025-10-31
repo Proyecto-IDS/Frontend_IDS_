@@ -1,22 +1,25 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import {
-  fetchIncidents,
-  fetchIncidentById,
+  authStartGoogle as authStartGoogleApi,
+  authHandleReturn as authHandleReturnApi,
+  authVerifyTotp as authVerifyTotpApi,
+  authLogout as authLogoutApi,
+  getIncidents,
+  getIncidentById,
   postIncidentAction,
-  openWarRoomSession,
-  fetchWarRoomMessages,
-  postWarRoomMessage,
-  authStartGoogle as apiAuthStartGoogle,
-  authFetchMe as apiAuthFetchMe,
-  authVerifyTotp as apiAuthVerifyTotp,
-  authLogout as apiAuthLogout,
-  fetchRecentTraffic,
-  fetchPacketDetail,
-  createIncidentFromPacket,
+  postIncidentFromPacket,
+  postIncidentWarRoom,
+  getWarRoomMessages,
+  postWarRoomMessage as apiPostWarRoomMessage,
+  getTrafficRecent,
+  getTrafficPacketById,
+  connectTrafficStream,
 } from './api.js';
 
 const AppStateContext = createContext(null);
 const AppActionsContext = createContext(null);
+const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
+const shouldUseMock = (baseUrl) => USE_MOCKS || !baseUrl || !baseUrl.trim();
 
 const STORAGE_KEY = 'ids-settings';
 
@@ -372,7 +375,7 @@ export function AppProvider({ children }) {
     const loadIncidents = async (filters = {}) => {
       dispatch({ type: 'incidents/loading', payload: true });
       try {
-        const incidents = await fetchIncidents(filters, state.settings.apiBaseUrl);
+        const incidents = await getIncidents(filters, state.settings.apiBaseUrl);
         dispatch({ type: 'incidents/loaded', payload: incidents });
         incidents.forEach((incident) => {
           cacheRef.current.incidentDetails.set(incident.id, incident);
@@ -380,10 +383,19 @@ export function AppProvider({ children }) {
         return incidents;
       } catch (error) {
         addToast({
-          title: 'Error al cargar incidentes',
+          title: 'Error al conectar con incidentes',
           description: error.message || 'Intenta nuevamente más tarde.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await getIncidents(filters, '');
+            dispatch({ type: 'incidents/loaded', payload: fallback });
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback incidents failed', fallbackError);
+          }
+        }
         return [];
       } finally {
         dispatch({ type: 'incidents/loading', payload: false });
@@ -398,7 +410,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'incident/loaded', payload: cached });
           return cached;
         }
-        const incident = await fetchIncidentById(id, state.settings.apiBaseUrl);
+        const incident = await getIncidentById(id, state.settings.apiBaseUrl);
         cacheRef.current.incidentDetails.set(id, incident);
         dispatch({ type: 'incident/loaded', payload: incident });
         return incident;
@@ -408,6 +420,16 @@ export function AppProvider({ children }) {
           description: error.message || 'Revisa la conexión al backend.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await getIncidentById(id, '');
+            cacheRef.current.incidentDetails.set(id, fallback);
+            dispatch({ type: 'incident/loaded', payload: fallback });
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback incident detail failed', fallbackError);
+          }
+        }
         return null;
       } finally {
         dispatch({ type: 'incident/loading', payload: false });
@@ -416,7 +438,7 @@ export function AppProvider({ children }) {
 
     const updateIncidentStatus = async (id, actionKey) => {
       try {
-        const incident = await postIncidentAction(id, actionKey, state.settings.apiBaseUrl);
+        const incident = await postIncidentAction(id, { action: actionKey }, state.settings.apiBaseUrl);
         cacheRef.current.incidentDetails.set(id, incident);
         dispatch({ type: 'incident/updated', payload: { incident } });
         addToast({
@@ -431,6 +453,16 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await postIncidentAction(id, { action: actionKey }, '');
+            cacheRef.current.incidentDetails.set(id, fallback);
+            dispatch({ type: 'incident/updated', payload: { incident: fallback } });
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback incident action failed', fallbackError);
+          }
+        }
         throw error;
       }
     };
@@ -451,7 +483,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'warroom/loaded', payload: existing });
           return existing;
         }
-        const warRoom = await openWarRoomSession(id, state.settings.apiBaseUrl);
+        const warRoom = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
@@ -461,6 +493,16 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta más tarde.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await postIncidentWarRoom(id, '');
+            cacheRef.current.warRooms.set(fallback.id, fallback);
+            dispatch({ type: 'warroom/loaded', payload: fallback });
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback war room failed', fallbackError);
+          }
+        }
         throw error;
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
@@ -469,7 +511,7 @@ export function AppProvider({ children }) {
 
     const loadWarRoomMessages = async (warRoomId) => {
       try {
-        const messages = await fetchWarRoomMessages(warRoomId, state.settings.apiBaseUrl);
+        const messages = await getWarRoomMessages(warRoomId, state.settings.apiBaseUrl);
         dispatch({ type: 'warroom/messages', payload: { id: warRoomId, messages } });
         const cached = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
         cacheRef.current.warRooms.set(warRoomId, { ...cached, messages });
@@ -480,13 +522,22 @@ export function AppProvider({ children }) {
           description: error.message || 'Revisa la API.',
           tone: 'warn',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await getWarRoomMessages(warRoomId, '');
+            dispatch({ type: 'warroom/messages', payload: { id: warRoomId, messages: fallback } });
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback war room messages failed', fallbackError);
+          }
+        }
         return [];
       }
     };
 
     const sendWarRoomMessage = async (warRoomId, content) => {
       try {
-        const { userMessage, assistantMessage } = await postWarRoomMessage(
+        const { userMessage, assistantMessage } = await apiPostWarRoomMessage(
           warRoomId,
           { role: 'user', content },
           state.settings.apiBaseUrl,
@@ -505,6 +556,25 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await apiPostWarRoomMessage(
+              warRoomId,
+              { role: 'user', content },
+              '',
+            );
+            const existing = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId, messages: [] };
+            const updatedMessages = [...(existing.messages || []), fallback.userMessage];
+            if (fallback.assistantMessage) {
+              updatedMessages.push(fallback.assistantMessage);
+            }
+            cacheRef.current.warRooms.set(warRoomId, { ...existing, messages: updatedMessages });
+            dispatch({ type: 'warroom/messages', payload: { id: warRoomId, messages: updatedMessages } });
+            return updatedMessages;
+          } catch (fallbackError) {
+            console.warn('Fallback war room send failed', fallbackError);
+          }
+        }
         throw error;
       }
     };
@@ -530,23 +600,12 @@ export function AppProvider({ children }) {
       return next;
     };
 
-    const authStartGoogle = async () => {
+    const authStartGoogleAction = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        if (state.settings.apiBaseUrl) {
-          const url = new URL('/auth/google/start', state.settings.apiBaseUrl);
-          dispatch({ type: 'auth/loading', payload: false });
-          window.location.href = url.toString();
-          return { redirected: true };
-        }
-        await apiAuthStartGoogle(state.settings.apiBaseUrl);
+        await authStartGoogleApi(state.settings.apiBaseUrl);
         dispatch({ type: 'auth/loading', payload: false });
-        addToast({
-          title: 'OAuth simulado',
-          description: 'Usa el código 123456 para completar el segundo factor en el entorno mock.',
-          tone: 'info',
-        });
-        return { mock: true };
+        return { initiated: true };
       } catch (error) {
         dispatch({ type: 'auth/error', payload: error.message });
         addToast({
@@ -558,10 +617,10 @@ export function AppProvider({ children }) {
       }
     };
 
-    const authHandleReturn = async () => {
+    const authHandleReturnAction = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        const result = await apiAuthFetchMe(state.settings.apiBaseUrl);
+        const result = await authHandleReturnApi(state.settings.apiBaseUrl);
         if (result && result.mfa_required && result.mfa_ticket) {
           dispatch({ type: 'auth/mfa', payload: { ticket: result.mfa_ticket } });
           addToast({
@@ -596,8 +655,8 @@ export function AppProvider({ children }) {
     const authVerifyTotp = async (ticket, code) => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        await apiAuthVerifyTotp(ticket, code, state.settings.apiBaseUrl);
-        const user = await apiAuthFetchMe(state.settings.apiBaseUrl);
+        await authVerifyTotpApi(ticket, code, state.settings.apiBaseUrl);
+        const user = await authHandleReturnApi(state.settings.apiBaseUrl);
         if (user && user.id) {
           dispatch({ type: 'auth/success', payload: user });
           addToast({
@@ -623,7 +682,7 @@ export function AppProvider({ children }) {
     const authLogout = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        await apiAuthLogout(state.settings.apiBaseUrl);
+        await authLogoutApi(state.settings.apiBaseUrl);
       } catch (error) {
         console.warn('Fallo al cerrar sesión en backend. Se limpiará el estado local.', error);
       } finally {
@@ -697,7 +756,7 @@ export function AppProvider({ children }) {
 
     const loadPacketDetail = async (packetId) => {
       try {
-        const detail = await fetchPacketDetail(packetId, state.settings.apiBaseUrl);
+        const detail = await getTrafficPacketById(packetId, state.settings.apiBaseUrl);
         return detail;
       } catch (error) {
         addToast({
@@ -705,13 +764,20 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            return await getTrafficPacketById(packetId, '');
+          } catch (fallbackError) {
+            console.warn('Fallback packet detail failed', fallbackError);
+          }
+        }
         throw error;
       }
     };
 
     const requestRecentTraffic = async ({ since, limit }) => {
       try {
-        const packets = await fetchRecentTraffic({ since, limit }, state.settings.apiBaseUrl);
+        const packets = await getTrafficRecent({ since, limit }, state.settings.apiBaseUrl);
         return packets;
       } catch (error) {
         addToast({
@@ -719,13 +785,20 @@ export function AppProvider({ children }) {
           description: error.message || 'Revisa la conexión al backend.',
           tone: 'warn',
         });
+        if (!USE_MOCKS) {
+          try {
+            return await getTrafficRecent({ since, limit }, '');
+          } catch (fallbackError) {
+            console.warn('Fallback traffic recent failed', fallbackError);
+          }
+        }
         throw error;
       }
     };
 
     const createIncidentFromPacketAction = async ({ packetId, reason, severity }) => {
       try {
-        const result = await createIncidentFromPacket({ packetId, reason, severity }, state.settings.apiBaseUrl);
+        const result = await postIncidentFromPacket(packetId, reason, severity, state.settings.apiBaseUrl);
         linkPacketToIncident(packetId, result.incidentId, severity);
         addToast({
           title: 'Incidente generado',
@@ -739,6 +812,15 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente.',
           tone: 'danger',
         });
+        if (!USE_MOCKS) {
+          try {
+            const fallback = await postIncidentFromPacket(packetId, reason, severity, '');
+            linkPacketToIncident(packetId, fallback.incidentId, severity);
+            return fallback;
+          } catch (fallbackError) {
+            console.warn('Fallback incident from packet failed', fallbackError);
+          }
+        }
         throw error;
       }
     };
@@ -754,8 +836,8 @@ export function AppProvider({ children }) {
       sendWarRoomMessage,
       updateWarRoomChecklist,
       saveSettings,
-      authStartGoogle,
-      authHandleReturn,
+      authStartGoogle: authStartGoogleAction,
+      authHandleReturn: authHandleReturnAction,
       authVerifyTotp,
       authLogout,
       appendTrafficBatch,

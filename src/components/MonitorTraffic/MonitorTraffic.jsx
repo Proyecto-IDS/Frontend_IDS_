@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppActions, useAppState } from '../../app/state.js';
-import { createTrafficSocket, closeSocket } from '../../app/api.socket.js';
+import { connectTrafficStream } from '../../app/api.js';
 import { getRouteHash, navigate } from '../../app/router.js';
 import Modal from '../Modal.jsx';
 import Loader from '../Loader.jsx';
@@ -34,6 +34,7 @@ function MonitorTraffic() {
               <span>Destino</span>
               <span>Proto</span>
               <span>Len</span>
+              <span>Detección</span>
               <span>Info</span>
             </div>
             {Array.from({ length: 6 }).map((_, index) => (
@@ -44,6 +45,7 @@ function MonitorTraffic() {
                 <span>0.0.0.0:0000</span>
                 <span>TCP</span>
                 <span>000</span>
+                <span>—</span>
                 <span>Descripción del paquete</span>
               </div>
             ))}
@@ -92,6 +94,10 @@ function MonitorTrafficLive() {
   const pollTimerRef = useRef(null);
   const lastTimestampRef = useRef(traffic.lastTimestamp);
   const detailCacheRef = useRef(new Map());
+
+  const detectionModelLabel = detail?.model_label ?? detail?.detection?.model_label ?? selectedPacket?.model_label;
+  const detectionModelScore = detail?.model_score ?? detail?.detection?.model_score ?? selectedPacket?.model_score;
+  const detectionModelVersion = detail?.model_version ?? detail?.detection?.model_version ?? selectedPacket?.model_version;
 
   const selectedPacket = useMemo(() => {
     const list = traffic.packets;
@@ -151,23 +157,25 @@ function MonitorTrafficLive() {
     };
   }, [loadPacketDetail, selectedPacket, setTrafficIpFilter]);
 
-  const handleMessage = useCallback(
-    (message) => {
-      if (!message) return;
-      switch (message.type) {
+  const handleStreamEvent = useCallback(
+    (type, payload) => {
+      if (!type) return;
+      switch (type) {
         case 'packet_batch':
-          appendTrafficBatch(message.packets || []);
+          appendTrafficBatch(payload?.packets || []);
           break;
         case 'packet':
-          appendTrafficBatch(message.packet ? [message.packet] : []);
+          appendTrafficBatch(payload?.packet ? [payload.packet] : []);
           break;
         case 'alert':
-          if (message.alert) {
-            const { packetId, incidentId, severity } = message.alert;
+          if (payload?.alert) {
+            const { packetId, incidentId, severity, score, model_version: modelVersion } = payload.alert;
             linkPacketToIncident(packetId, incidentId, severity);
             addToast({
               title: `Alerta ${severity || 'alta'}`,
-              description: `Paquete vinculado a ${incidentId}.`,
+              description: incidentId
+                ? `Paquete vinculado a ${incidentId}. Score ${score ?? '—'}`
+                : `Score ${score ?? '—'}${modelVersion ? ` · Modelo ${modelVersion}` : ''}`,
               tone: severity === 'critical' ? 'danger' : 'warn',
             });
           }
@@ -181,7 +189,7 @@ function MonitorTrafficLive() {
 
   const destroyConnections = useCallback(() => {
     if (socketRef.current) {
-      closeSocket(socketRef.current);
+      socketRef.current.close?.();
       socketRef.current = null;
     }
     if (pollTimerRef.current) {
@@ -194,35 +202,35 @@ function MonitorTrafficLive() {
     setConnectionStatus('conectando');
     destroyConnections();
 
+    const tick = async () => {
+      try {
+        const since = lastTimestampRef.current;
+        const packets = await requestRecentTraffic({ since, limit: 100 });
+        if (packets?.length) {
+          appendTrafficBatch(packets);
+          const latest = packets[packets.length - 1];
+          lastTimestampRef.current = new Date(latest.timestamp).getTime();
+        }
+      } catch (error) {
+        setConnectionStatus('error');
+      }
+    };
+
     if (traffic.mode === 'ws') {
-      socketRef.current = createTrafficSocket({
-        baseUrl: settings.apiBaseUrl,
-        onMessage: handleMessage,
+      socketRef.current = connectTrafficStream(settings.apiBaseUrl, handleStreamEvent, {
         onOpen: () => setConnectionStatus('en tiempo real'),
         onClose: () => setConnectionStatus('desconectado'),
         onError: () => setConnectionStatus('error'),
       });
+      pollTimerRef.current = setInterval(tick, Math.max(traffic.pollingInterval, 8000));
     } else {
       setConnectionStatus('polling');
-      const tick = async () => {
-        try {
-          const since = lastTimestampRef.current;
-          const packets = await requestRecentTraffic({ since, limit: 100 });
-          if (packets?.length) {
-            appendTrafficBatch(packets);
-            const latest = packets[packets.length - 1];
-            lastTimestampRef.current = new Date(latest.timestamp).getTime();
-          }
-        } catch (error) {
-          setConnectionStatus('error');
-        }
-      };
       tick();
       pollTimerRef.current = setInterval(tick, traffic.pollingInterval);
     }
 
     return destroyConnections;
-  }, [traffic.mode, traffic.pollingInterval, settings.apiBaseUrl, handleMessage, requestRecentTraffic, appendTrafficBatch, destroyConnections]);
+  }, [traffic.mode, traffic.pollingInterval, settings.apiBaseUrl, handleStreamEvent, requestRecentTraffic, appendTrafficBatch, destroyConnections]);
 
   useEffect(() => () => destroyConnections(), [destroyConnections]);
 
@@ -482,6 +490,21 @@ function MonitorTrafficLive() {
                 <div>
                   <dt>Longitud</dt>
                   <dd>{selectedPacket.length} bytes</dd>
+                </div>
+                <div>
+                  <dt>Detección</dt>
+                  <dd>
+                    {detectionModelLabel || detectionModelScore !== undefined ? (
+                      <span className="detection-badge" title={`Modelo ${detectionModelLabel || '—'}${
+                        detectionModelVersion ? ` · v${detectionModelVersion}` : ''
+                      }${detectionModelScore !== undefined ? ` · score ${detectionModelScore}` : ''}`}>
+                        {detectionModelLabel || '—'}
+                        {detectionModelScore !== undefined ? ` (${detectionModelScore})` : ''}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </dd>
                 </div>
                 {detail?.layers ? (
                   <div>

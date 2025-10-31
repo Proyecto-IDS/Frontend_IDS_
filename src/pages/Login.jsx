@@ -8,7 +8,6 @@ import './Login.css';
 function Login({ params = {} }) {
   const { auth } = useAppState();
   const { authStartGoogle, authHandleReturn, authVerifyTotp, authLogout } = useAppActions();
-  const [email, setEmail] = useState('');
   const [localError, setLocalError] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [totpError, setTotpError] = useState('');
@@ -84,21 +83,11 @@ function Login({ params = {} }) {
       <section className="login-card" aria-labelledby="login-title">
         <header>
           <h1 id="login-title">Inicia sesión</h1>
-          <p>Accede al centro de monitoreo IDS con tu cuenta institucional.</p>
+          <p>Utiliza tu cuenta de Google institucional para acceder al IDS.</p>
         </header>
         <div className="login-error" aria-live="polite" role="status">
           {localError || auth.error ? <span>{localError || auth.error}</span> : null}
         </div>
-        <label className="login-field">
-          Correo institucional (opcional)
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="tu.nombre@campus.edu"
-            autoComplete="email"
-          />
-        </label>
         <button type="button" className="btn primary google-button" onClick={handleGoogle} disabled={showLoader}>
           <span className="google-icon" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -121,13 +110,8 @@ function Login({ params = {} }) {
             </svg>
           </span>
           {showLoader ? 'Redirigiendo...' : 'Continuar con Google'}
-        </button>
-        <div className="login-separator" role="presentation">
-          <span>o</span>
-        </div>
-        <p className="login-hint">
-          Mantén tu dispositivo móvil a mano. El sistema puede solicitar un código TOTP tras autenticarte con Google.
-        </p>
+          </button>
+        <p className="login-hint">El sistema puede solicitar un código TOTP tras autenticarte con Google.</p>
       </section>
 
       <Modal

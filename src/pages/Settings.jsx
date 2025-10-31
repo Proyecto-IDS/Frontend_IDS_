@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
+
+const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
 
 const themeOptions = [
   { value: 'auto', label: 'Automático' },
@@ -9,7 +11,7 @@ const themeOptions = [
 
 function Settings() {
   const { settings } = useAppState();
-  const { saveSettings, addToast } = useAppActions();
+  const { saveSettings } = useAppActions();
   const [form, setForm] = useState(settings);
 
   useEffect(() => {
@@ -30,6 +32,13 @@ function Settings() {
       },
     }));
   };
+
+  const connectionHint = useMemo(() => {
+    if (!form.apiBaseUrl || USE_MOCKS) {
+      return 'Sin conexión directa. Se utilizarán mocks locales 🚫';
+    }
+    return `Conectado a ${form.apiBaseUrl} ✅`;
+  }, [form.apiBaseUrl]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -57,13 +66,7 @@ function Settings() {
               placeholder="https://ids-campus/api"
             />
           </label>
-          <button
-            type="button"
-            className="btn subtle"
-            onClick={() => addToast({ title: 'Ping enviado', description: 'Se probará la API al guardar.', tone: 'info' })}
-          >
-            Probar conexión
-          </button>
+          <p className="connection-hint">{connectionHint}</p>
         </fieldset>
 
         <fieldset>
