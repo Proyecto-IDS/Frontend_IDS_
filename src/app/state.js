@@ -30,7 +30,7 @@ const shouldUseMock = (baseUrl) => {
 };
 
 const envApiBaseUrl = normalizeBaseUrl(import.meta?.env?.VITE_API_BASE_URL);
-const DEFAULT_API_BASE_URL = envApiBaseUrl || 'http://localhost:4000';
+const DEFAULT_API_BASE_URL = envApiBaseUrl || 'http://localhost:8080';
 
 const STORAGE_KEY = 'ids-settings';
 
@@ -54,6 +54,12 @@ function loadStoredSettings() {
     const parsed = JSON.parse(raw);
     const merged = { ...defaultSettings, ...parsed };
     merged.apiBaseUrl = normalizeBaseUrl(merged.apiBaseUrl) || defaultSettings.apiBaseUrl;
+    if (
+      merged.apiBaseUrl === 'http://localhost:4000' &&
+      defaultSettings.apiBaseUrl !== 'http://localhost:4000'
+    ) {
+      merged.apiBaseUrl = defaultSettings.apiBaseUrl;
+    }
     return merged;
   } catch (error) {
     console.warn('Failed to parse settings from storage', error);
