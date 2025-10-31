@@ -7,6 +7,7 @@ import {
   mockPostWarRoomMessage,
   mockAuthStartGoogle,
   mockAuthFetchMe,
+  mockAuthFetchSessionStatus,
   mockAuthVerifyTotp,
   mockAuthLogout,
 } from './api.mock.js';
@@ -19,6 +20,12 @@ import {
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
 const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
+
+let authToken = null;
+
+export function setAuthToken(token) {
+  authToken = token || null;
+}
 
 const shouldUseMock = (baseUrl) => USE_MOCKS || !baseUrl || !baseUrl.trim();
 
@@ -39,6 +46,9 @@ const handleResponse = async (response) => {
     const text = await response.text();
     throw new Error(text || `Error ${response.status}`);
   }
+  if (response.status === 204) {
+    return null;
+  }
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
     return response.json();
@@ -48,9 +58,14 @@ const handleResponse = async (response) => {
 
 const request = async (url, init = {}) => {
   try {
+    const headers = new Headers(init.headers || {});
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+    }
     const response = await fetch(url, {
-      credentials: 'include',
+      credentials: init.credentials ?? 'include',
       ...init,
+      headers,
     });
     return handleResponse(response);
   } catch (error) {
@@ -69,11 +84,19 @@ export async function authStartGoogle(baseUrl) {
   return { redirected: true };
 }
 
-export async function authHandleReturn(baseUrl) {
+export async function authFetchMe(baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthFetchMe();
   }
   const url = toUrl(baseUrl, '/auth/me');
+  return request(url, { method: 'GET' });
+}
+
+export async function authFetchSessionStatus(baseUrl) {
+  if (shouldUseMock(baseUrl)) {
+    return mockAuthFetchSessionStatus();
+  }
+  const url = toUrl(baseUrl, '/auth/session/status');
   return request(url, { method: 'GET' });
 }
 
@@ -231,7 +254,12 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
 
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    return normalized.replace(/^http/, 'ws') + '/traffic/stream';
+    let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
+    if (authToken) {
+      const separator = target.includes('?') ? '&' : '?';
+      target = `${target}${separator}token=${encodeURIComponent(authToken)}`;
+    }
+    return target;
   };
 
   const setupSocket = () => {
@@ -300,7 +328,8 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
 
 export const api = {
   authStartGoogle,
-  authHandleReturn,
+  authFetchMe,
+  authFetchSessionStatus,
   authVerifyTotp,
   authLogout,
   getIncidents,
