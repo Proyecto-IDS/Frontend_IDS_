@@ -19,12 +19,23 @@ import {
 const AppStateContext = createContext(null);
 const AppActionsContext = createContext(null);
 const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
-const shouldUseMock = (baseUrl) => USE_MOCKS || !baseUrl || !baseUrl.trim();
+const normalizeBaseUrl = (value) => {
+  if (!value) return '';
+  return value.trim();
+};
+
+const shouldUseMock = (baseUrl) => {
+  const normalized = normalizeBaseUrl(baseUrl);
+  return USE_MOCKS || !normalized;
+};
+
+const envApiBaseUrl = normalizeBaseUrl(import.meta?.env?.VITE_API_BASE_URL);
+const DEFAULT_API_BASE_URL = envApiBaseUrl || 'http://localhost:4000';
 
 const STORAGE_KEY = 'ids-settings';
 
 const defaultSettings = {
-  apiBaseUrl: '',
+  apiBaseUrl: DEFAULT_API_BASE_URL,
   theme: 'auto',
   notifications: true,
   severityThresholds: {
@@ -41,7 +52,9 @@ function loadStoredSettings() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultSettings;
     const parsed = JSON.parse(raw);
-    return { ...defaultSettings, ...parsed };
+    const merged = { ...defaultSettings, ...parsed };
+    merged.apiBaseUrl = normalizeBaseUrl(merged.apiBaseUrl) || defaultSettings.apiBaseUrl;
+    return merged;
   } catch (error) {
     console.warn('Failed to parse settings from storage', error);
     return defaultSettings;
@@ -587,7 +600,11 @@ export function AppProvider({ children }) {
     };
 
     const saveSettings = (updates) => {
-      const next = { ...state.settings, ...updates };
+      const next = {
+        ...state.settings,
+        ...updates,
+        apiBaseUrl: normalizeBaseUrl(updates.apiBaseUrl) || DEFAULT_API_BASE_URL,
+      };
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       }
