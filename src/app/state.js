@@ -1,7 +1,8 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import {
   authStartGoogle as authStartGoogleApi,
-  authHandleReturn as authHandleReturnApi,
+  authFetchMe as authFetchMeApi,
+  authFetchSessionStatus as authFetchSessionStatusApi,
   authVerifyTotp as authVerifyTotpApi,
   authLogout as authLogoutApi,
   getIncidents,
@@ -14,6 +15,7 @@ import {
   getTrafficRecent,
   getTrafficPacketById,
   connectTrafficStream,
+  setAuthToken,
 } from './api.js';
 
 const AppStateContext = createContext(null);
@@ -33,6 +35,7 @@ const envApiBaseUrl = normalizeBaseUrl(import.meta?.env?.VITE_API_BASE_URL);
 const DEFAULT_API_BASE_URL = envApiBaseUrl || 'http://localhost:8080';
 
 const STORAGE_KEY = 'ids-settings';
+const AUTH_STORAGE_KEY = 'ids-auth';
 
 const defaultSettings = {
   apiBaseUrl: DEFAULT_API_BASE_URL,
@@ -67,6 +70,50 @@ function loadStoredSettings() {
   }
 }
 
+function loadStoredAuth() {
+  if (typeof window === 'undefined') {
+    return { token: null, user: null };
+  }
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      return { token: null, user: null };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      token: typeof parsed?.token === 'string' ? parsed.token : null,
+      user: parsed?.user || null,
+    };
+  } catch (error) {
+    console.warn('Failed to parse auth state from storage', error);
+    return { token: null, user: null };
+  }
+}
+
+const persistAuthState = (authState) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      AUTH_STORAGE_KEY,
+      JSON.stringify({
+        token: authState.token ?? null,
+        user: authState.user ?? null,
+      }),
+    );
+  } catch (error) {
+    console.warn('Failed to persist auth state', error);
+  }
+};
+
+const clearAuthState = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Failed to clear auth state', error);
+  }
+};
+
 const initialState = {
   settings: defaultSettings,
   incidents: [],
@@ -80,6 +127,7 @@ const initialState = {
   },
   auth: {
     user: null,
+    token: null,
     loading: false,
     error: null,
     mfaRequired: false,
@@ -192,7 +240,8 @@ function reducer(state, action) {
       return {
         ...state,
         auth: {
-          user: action.payload,
+          user: action.payload.user,
+          token: action.payload.token ?? state.auth.token,
           loading: false,
           error: null,
           mfaRequired: false,
@@ -217,6 +266,7 @@ function reducer(state, action) {
         ...state,
         auth: {
           user: null,
+          token: null,
           loading: false,
           error: null,
           mfaRequired: false,
@@ -359,10 +409,22 @@ function reducer(state, action) {
 }
 
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState, (base) => ({
-    ...base,
-    settings: loadStoredSettings(),
-  }));
+  const [state, dispatch] = useReducer(reducer, initialState, (base) => {
+    const storedSettings = loadStoredSettings();
+    const storedAuth = loadStoredAuth();
+    if (storedAuth.token) {
+      setAuthToken(storedAuth.token);
+    }
+    return {
+      ...base,
+      settings: storedSettings,
+      auth: {
+        ...base.auth,
+        token: storedAuth.token,
+        user: storedAuth.user,
+      },
+    };
+  });
 
   const cacheRef = useRef({
     incidentDetails: new Map(),
@@ -380,6 +442,10 @@ export function AppProvider({ children }) {
     root.dataset.theme = theme;
   }, [state.settings.theme]);
 
+  useEffect(() => {
+    setAuthToken(state.auth.token);
+  }, [state.auth.token]);
+
   const actions = useMemo(() => {
     const dismissToast = (id) => {
       dispatch({ type: 'toast/dismissed', payload: id });
@@ -389,6 +455,17 @@ export function AppProvider({ children }) {
       const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
       window.setTimeout(() => dismissToast(id), 4000);
+    };
+
+    const handleAuthSuccess = (token, user, toastOptions) => {
+      const payload = { token, user };
+      persistAuthState(payload);
+      setAuthToken(token);
+      dispatch({ type: 'auth/success', payload });
+      if (toastOptions) {
+        addToast(toastOptions);
+      }
+      return payload;
     };
 
     const loadIncidents = async (filters = {}) => {
@@ -643,25 +720,38 @@ export function AppProvider({ children }) {
     const authHandleReturnAction = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        const result = await authHandleReturnApi(state.settings.apiBaseUrl);
-        if (result && result.mfa_required && result.mfa_ticket) {
-          dispatch({ type: 'auth/mfa', payload: { ticket: result.mfa_ticket } });
+        const status = await authFetchSessionStatusApi(state.settings.apiBaseUrl);
+        if (status?.mfa_required && status?.mfa_ticket) {
+          dispatch({ type: 'auth/mfa', payload: { ticket: status.mfa_ticket } });
           addToast({
             title: 'Autenticación adicional requerida',
             description: 'Introduce el código de tu aplicación TOTP.',
             tone: 'warn',
           });
-          return { mfaRequired: true, ticket: result.mfa_ticket };
+          return { mfaRequired: true, ticket: status.mfa_ticket };
         }
-        if (result && result.id) {
-          dispatch({ type: 'auth/success', payload: result });
-          addToast({
+
+        if (status?.access_token && status?.user) {
+          return handleAuthSuccess(status.access_token, status.user, {
             title: 'Sesión iniciada',
-            description: `Bienvenido, ${result.name || result.email}`,
+            description: `Bienvenido, ${status.user.name || status.user.email}`,
             tone: 'success',
           });
-          return { user: result };
         }
+
+        if (state.auth.token) {
+          try {
+            const currentUser = await authFetchMeApi(state.settings.apiBaseUrl);
+            if (currentUser?.id) {
+              return handleAuthSuccess(state.auth.token, currentUser, null);
+            }
+          } catch (verifyError) {
+            console.warn('No se pudo validar el token almacenado', verifyError);
+          }
+        }
+
+        clearAuthState();
+        setAuthToken(null);
         dispatch({ type: 'auth/logout' });
         return null;
       } catch (error) {
@@ -678,19 +768,16 @@ export function AppProvider({ children }) {
     const authVerifyTotp = async (ticket, code) => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        await authVerifyTotpApi(ticket, code, state.settings.apiBaseUrl);
-        const user = await authHandleReturnApi(state.settings.apiBaseUrl);
-        if (user && user.id) {
-          dispatch({ type: 'auth/success', payload: user });
-          addToast({
+        const result = await authVerifyTotpApi(ticket, code, state.settings.apiBaseUrl);
+        if (result?.access_token && result?.user) {
+          const payload = handleAuthSuccess(result.access_token, result.user, {
             title: 'TOTP verificado',
             description: 'Autenticación en dos pasos completada.',
             tone: 'success',
           });
-          return { user };
+          return payload;
         }
-        dispatch({ type: 'auth/logout' });
-        return null;
+        throw new Error('Respuesta inválida del servicio de autenticación.');
       } catch (error) {
         dispatch({ type: 'auth/error', payload: error.message });
         addToast({
@@ -709,6 +796,8 @@ export function AppProvider({ children }) {
       } catch (error) {
         console.warn('Fallo al cerrar sesión en backend. Se limpiará el estado local.', error);
       } finally {
+        clearAuthState();
+        setAuthToken(null);
         dispatch({ type: 'auth/logout' });
         addToast({
           title: 'Sesión cerrada',
@@ -877,7 +966,7 @@ export function AppProvider({ children }) {
       requestRecentTraffic,
       createIncidentFromPacketAction,
     };
-  }, [state.settings, state.traffic, state.incidents]);
+  }, [state.settings, state.traffic, state.incidents, state.auth]);
 
   return createElement(
     AppStateContext.Provider,

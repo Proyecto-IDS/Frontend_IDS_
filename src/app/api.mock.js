@@ -67,6 +67,18 @@ const mockAuthState = {
   requireMfa: true,
   email: 'analista@ids.campus',
   name: 'Analista IDS',
+  token: null,
+  expiresAt: null,
+};
+
+const ensureMockToken = () => {
+  const expiresIn = 3600;
+  mockAuthState.token = `mock-token-${Date.now()}`;
+  mockAuthState.expiresAt = Date.now() + expiresIn * 1000;
+  return {
+    token: mockAuthState.token,
+    expiresIn,
+  };
 };
 
 const ensureWarRoom = (incidentId) => {
@@ -229,6 +241,24 @@ export async function mockAuthFetchMe() {
   });
 }
 
+export async function mockAuthFetchSessionStatus() {
+  return withLatency(() => {
+    if (mockAuthState.user) {
+      const { token, expiresIn } = ensureMockToken();
+      return {
+        access_token: token,
+        token_type: 'Bearer',
+        expires_in: expiresIn,
+        user: clone(mockAuthState.user),
+      };
+    }
+    if (mockAuthState.pendingTicket) {
+      return { mfa_required: true, mfa_ticket: mockAuthState.pendingTicket };
+    }
+    return null;
+  });
+}
+
 export async function mockAuthVerifyTotp(ticket, code) {
   return withLatency(() => {
     if (!mockAuthState.pendingTicket || ticket !== mockAuthState.pendingTicket) {
@@ -243,8 +273,14 @@ export async function mockAuthVerifyTotp(ticket, code) {
       name: mockAuthState.name,
       picture: 'https://avatars.dicebear.com/api/initials/IDS.svg',
     };
+    const { token, expiresIn } = ensureMockToken();
     mockAuthState.pendingTicket = null;
-    return { authenticated: true };
+    return {
+      access_token: token,
+      token_type: 'Bearer',
+      expires_in: expiresIn,
+      user: clone(mockAuthState.user),
+    };
   });
 }
 
@@ -252,6 +288,8 @@ export async function mockAuthLogout() {
   return withLatency(() => {
     mockAuthState.user = null;
     mockAuthState.pendingTicket = null;
+    mockAuthState.token = null;
+    mockAuthState.expiresAt = null;
     return { ok: true };
   });
 }
