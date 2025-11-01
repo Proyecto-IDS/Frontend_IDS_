@@ -41,7 +41,7 @@ const severityTone = {
 
 function Dashboard() {
   const { incidents, loading, traffic, settings } = useAppState();
-  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket } = useAppActions();
+  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket, openWarRoom } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
     status: '',
@@ -136,6 +136,28 @@ function Dashboard() {
           <time dateTime={value}>{new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
         ),
       },
+      {
+        key: 'actions',
+        label: 'Acciones',
+        render: (_, row) => {
+          if (row.status === 'no-conocido') {
+            return (
+              <button
+                type="button"
+                className="btn-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenWarRoom(row.id);
+                }}
+                title="Abrir mesa de trabajo"
+              >
+                🚨 Mesa de trabajo
+              </button>
+            );
+          }
+          return '—';
+        },
+      },
     ],
     [],
   );
@@ -160,6 +182,18 @@ function Dashboard() {
   const handleClearTrafficFilter = () => {
     setTrafficIpFilter(null);
     selectTrafficPacket(null, null);
+  };
+
+  const handleOpenWarRoom = async (incidentId) => {
+    try {
+      const warRoom = await openWarRoom(incidentId);
+      const warRoomId = warRoom?.id || warRoom?.warRoomId;
+      if (warRoomId) {
+        navigate(getRouteHash('war-room', { id: warRoomId }));
+      }
+    } catch (error) {
+      console.error('Error opening war room:', error);
+    }
   };
 
   return (
