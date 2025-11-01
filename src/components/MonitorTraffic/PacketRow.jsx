@@ -67,7 +67,16 @@ const PacketRow = memo(function PacketRow({ packet, index, selected, onSelect, o
       </span>
       <span className="cell info">{packet.info}</span>
       <span className="cell alert" aria-label={alertLabel}>
-        {packet.incidentId ? <span className="packet-alert">{packet.incidentId}</span> : null}
+        {packet.incidentId ? (
+          <a 
+            href={`#/incident/${packet.incidentId}`} 
+            className="link packet-alert"
+            onClick={(e) => e.stopPropagation()}
+            title="Ver incidente relacionado"
+          >
+            Ver incidente
+          </a>
+        ) : null}
       </span>
     </button>
   );

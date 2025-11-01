@@ -180,6 +180,19 @@ function MonitorTrafficLive() {
             });
           }
           break;
+        case 'ml_status':
+          if (payload) {
+            const { status, streak, since } = payload;
+            addToast({
+              title: status === 'degraded' ? 'ML degradado' : 'ML recuperado',
+              description:
+                status === 'degraded'
+                  ? `ML degradado (streak=${streak || 0}). Operando en fallback.`
+                  : 'ML recuperado. Volvemos a inferencias en vivo.',
+              tone: status === 'degraded' ? 'warn' : 'success',
+            });
+          }
+          break;
         default:
           break;
       }
