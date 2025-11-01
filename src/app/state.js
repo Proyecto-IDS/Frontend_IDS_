@@ -804,6 +804,12 @@ export function AppProvider({ children }) {
           description: 'Has cerrado sesión correctamente.',
           tone: 'info',
         });
+        // Redirigir al login después de cerrar sesión
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => {
+            window.location.hash = '#/login';
+          }, 100);
+        }
       }
     };
 
