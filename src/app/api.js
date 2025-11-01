@@ -135,7 +135,10 @@ export async function getIncidents(filters = {}, baseUrl) {
     filter_by_ip: filters.filterByIp,
     packet_id: filters.packetId,
   });
-  return request(url, { method: 'GET' });
+  const response = await request(url, { method: 'GET' });
+  // Backend returns paginated response: {items: [...], page: 0, size: 20, total: 3}
+  // Extract just the items array for compatibility with existing code
+  return response?.items || [];
 }
 
 export async function getIncidentById(id, baseUrl) {
