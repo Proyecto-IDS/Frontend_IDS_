@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
+import { connectTrafficStream } from '../app/api.js';
 import StatCard from '../components/StatCard.jsx';
 import Table from '../components/Table.jsx';
 import Tag from '../components/Tag.jsx';
@@ -39,7 +40,7 @@ const severityTone = {
 };
 
 function Dashboard() {
-  const { incidents, loading, traffic } = useAppState();
+  const { incidents, loading, traffic, settings } = useAppState();
   const { loadIncidents, setTrafficIpFilter, selectTrafficPacket } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
@@ -48,6 +49,8 @@ function Dashboard() {
     from: '',
     to: '',
   });
+  const [alerts, setAlerts] = useState([]);
+  const alertsTimerRef = useRef(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -55,6 +58,46 @@ function Dashboard() {
     }, 250);
     return () => window.clearTimeout(timeoutId);
   }, [filters, loadIncidents]);
+
+  // Polling lento para alertas (cada 10 segundos)
+  useEffect(() => {
+    console.log('[Dashboard] Iniciando polling de alertas cada 10s');
+    
+    const fetchAlerts = async () => {
+      try {
+        // Obtener los últimos incidentes críticos como "alertas"
+        const criticalIncidents = incidents
+          .filter(i => i.severity === 'critica')
+          .slice(0, 5)
+          .map(incident => ({
+            id: incident.id,
+            timestamp: incident.createdAt,
+            severity: incident.severity,
+            incidentId: incident.id,
+            packetId: incident.source || 'N/A',
+            score: incident.detection?.model_score,
+            model_version: incident.detection?.model_version,
+          }));
+        
+        setAlerts(criticalIncidents);
+      } catch (error) {
+        console.error('[Dashboard] Error al obtener alertas:', error);
+      }
+    };
+    
+    // Primera carga inmediata
+    fetchAlerts();
+    
+    // Polling cada 10 segundos
+    alertsTimerRef.current = setInterval(fetchAlerts, 10000);
+    
+    return () => {
+      if (alertsTimerRef.current) {
+        clearInterval(alertsTimerRef.current);
+        alertsTimerRef.current = null;
+      }
+    };
+  }, [incidents]); // Re-ejecutar cuando cambien los incidentes
 
   const metrics = useMemo(() => {
     const total = incidents.length || 1;
@@ -219,9 +262,37 @@ function Dashboard() {
 
       <MonitorTraffic />
 
-      <section className="alerts-placeholder" aria-live="polite">
-        <h3>Alertas de incidentes</h3>
-        <p>Conecta el backend para recibir aquí las alertas vinculadas a paquetes y eventos críticos.</p>
+      <section className="alerts-section" aria-live="polite">
+        <header>
+          <h3>Alertas de incidentes</h3>
+          <span className="connection-status connected">
+            🟢 Polling cada 10s
+          </span>
+        </header>
+        {alerts.length === 0 ? (
+          <p className="alerts-empty">
+            No hay incidentes críticos en este momento.
+          </p>
+        ) : (
+          <ul className="alerts-list">
+            {alerts.map((alert) => (
+              <li key={alert.id} className={`alert-item severity-${alert.severity || 'medium'}`}>
+                <div className="alert-header">
+                  <Pill tone={severityTone[alert.severity] || 'neutral'}>{alert.severity || 'media'}</Pill>
+                  <time dateTime={alert.timestamp}>
+                    {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </time>
+                </div>
+                <div className="alert-body">
+                  <strong>Paquete: {alert.packetId}</strong>
+                  {alert.incidentId && <span> → Incidente: {alert.incidentId}</span>}
+                  {alert.score !== undefined && <span> · Score: {alert.score}</span>}
+                  {alert.model_version && <span> · Modelo v{alert.model_version}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="table-section">

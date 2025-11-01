@@ -140,7 +140,7 @@ const initialState = {
     mode: 'ws',
     paused: false,
     pollingInterval: 2000,
-    bufferSize: 600,
+    bufferSize: 5,
     lastTimestamp: null,
     filters: {
       protocol: 'ALL',

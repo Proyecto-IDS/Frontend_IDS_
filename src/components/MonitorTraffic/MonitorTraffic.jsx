@@ -108,6 +108,7 @@ function MonitorTrafficLive() {
   const detectionModelVersion = detail?.model_version ?? detail?.detection?.model_version ?? selectedPacket?.model_version;
 
   const initialFetchRef = useRef(false);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
     if (initialFetchRef.current) return;
@@ -135,40 +136,48 @@ function MonitorTrafficLive() {
       return;
     }
     setTrafficIpFilter(selectedPacket.src || selectedPacket.dst);
-    const cached = detailCacheRef.current.get(selectedPacket.id);
-    if (cached) {
-      setDetail(cached);
-      return;
-    }
-    let cancelled = false;
-    setDetailLoading(true);
-    loadPacketDetail(selectedPacket.id)
-      .then((data) => {
-        if (!cancelled) {
-          detailCacheRef.current.set(selectedPacket.id, data);
-          setDetail(data);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDetail(selectedPacket);
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadPacketDetail, selectedPacket, setTrafficIpFilter]);
+    
+    // Solo usar datos del paquete, sin cargar desde servidor
+    setDetail(selectedPacket);
+    setDetailLoading(false);
+    
+  }, [selectedPacket, setTrafficIpFilter]);
 
   const handleStreamEvent = useCallback(
     (type, payload) => {
       if (!type) return;
+      
+      // Si ya llegamos al máximo, ignorar más paquetes
+      if (maxPacketsReached.current) {
+        return;
+      }
+      
       switch (type) {
         case 'packet_batch':
-          appendTrafficBatch(payload?.packets || []);
+          const packets = payload?.packets || [];
+          if (packets.length > 0) {
+            packetCountRef.current += packets.length;
+            appendTrafficBatch(packets);
+            
+            // Cerrar WebSocket después de recibir 5 paquetes
+            if (packetCountRef.current >= 5 && socketRef.current) {
+              console.log('[MonitorTraffic] 5 paquetes recibidos, cerrando WebSocket');
+              maxPacketsReached.current = true;
+              socketRef.current.close?.();
+              socketRef.current = null;
+              setConnectionStatus('pausado (5 paquetes)');
+            }
+          }
+          break;
+        case 'batch':
+          if (Array.isArray(payload?.packets)) {
+            appendTrafficBatch(payload.packets);
+          }
           break;
         case 'packet':
-          appendTrafficBatch(payload?.packet ? [payload.packet] : []);
+          if (payload?.packet) {
+            appendTrafficBatch([payload.packet]);
+          }
           break;
         case 'alert':
           if (payload?.alert) {
@@ -235,6 +244,7 @@ function MonitorTrafficLive() {
 
     if (traffic.mode === 'ws') {
       console.log('[MonitorTraffic] Iniciando WebSocket a:', settings.apiBaseUrl);
+      setIsStreaming(true);
       socketRef.current = connectTrafficStream(settings.apiBaseUrl, handleStreamEvent, {
         onOpen: () => {
           console.log('[MonitorTraffic] WebSocket CONECTADO');
@@ -243,10 +253,12 @@ function MonitorTrafficLive() {
         onClose: () => {
           console.log('[MonitorTraffic] WebSocket CERRADO');
           setConnectionStatus('desconectado');
+          setIsStreaming(false);
         },
         onError: () => {
           console.log('[MonitorTraffic] WebSocket ERROR');
           setConnectionStatus('error');
+          setIsStreaming(false);
         },
       });
       // No hacer polling en modo WebSocket - los datos llegan por el stream
@@ -320,6 +332,15 @@ function MonitorTrafficLive() {
 
   const handlePauseToggle = () => {
     setTrafficPaused(!traffic.paused);
+  };
+
+  const handleStopStream = () => {
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+      setIsStreaming(false);
+      setConnectionStatus('desconectado');
+    }
   };
 
   const handleProtocolChange = (event) => {
@@ -435,6 +456,11 @@ function MonitorTrafficLive() {
           <button type="button" className="btn subtle" onClick={handleModeToggle}>
             {traffic.mode === 'ws' ? 'Cambiar a polling' : 'Cambiar a realtime'}
           </button>
+          {isStreaming && (
+            <button type="button" className="btn danger" onClick={handleStopStream}>
+              🛑 Detener tráfico
+            </button>
+          )}
           <label>
             Muestreo
             <select value={traffic.pollingInterval} onChange={(event) => setTrafficPollingInterval(Number(event.target.value))}>
