@@ -14,7 +14,9 @@ const PROTOCOLS = ['ALL', 'TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS', 'SSL'];
 const SEVERITIES = ['ALL', 'critical', 'high', 'medium', 'low'];
 
 function MonitorTraffic() {
-  const monitorEnabled = import.meta?.env?.VITE_MONITOR_ENABLED === 'true';
+  // Debug: Forzar monitor habilitado para pruebas
+  const monitorEnabled = import.meta?.env?.VITE_MONITOR_ENABLED === 'true' || true;
+  console.log('[MonitorTraffic] VITE_MONITOR_ENABLED:', import.meta?.env?.VITE_MONITOR_ENABLED, 'monitorEnabled:', monitorEnabled);
 
   if (!monitorEnabled) {
     return (
@@ -95,14 +97,15 @@ function MonitorTrafficLive() {
   const lastTimestampRef = useRef(traffic.lastTimestamp);
   const detailCacheRef = useRef(new Map());
 
-  const detectionModelLabel = detail?.model_label ?? detail?.detection?.model_label ?? selectedPacket?.model_label;
-  const detectionModelScore = detail?.model_score ?? detail?.detection?.model_score ?? selectedPacket?.model_score;
-  const detectionModelVersion = detail?.model_version ?? detail?.detection?.model_version ?? selectedPacket?.model_version;
-
+  // IMPORTANTE: Mover selectedPacket ANTES de usarlo en las líneas siguientes
   const selectedPacket = useMemo(() => {
     const list = traffic.packets;
     return list.find((packet) => packet.id === traffic.selectedPacketId) || null;
   }, [traffic.packets, traffic.selectedPacketId]);
+
+  const detectionModelLabel = detail?.model_label ?? detail?.detection?.model_label ?? selectedPacket?.model_label;
+  const detectionModelScore = detail?.model_score ?? detail?.detection?.model_score ?? selectedPacket?.model_score;
+  const detectionModelVersion = detail?.model_version ?? detail?.detection?.model_version ?? selectedPacket?.model_version;
 
   const initialFetchRef = useRef(false);
 
@@ -212,6 +215,7 @@ function MonitorTrafficLive() {
   }, []);
 
   useEffect(() => {
+    console.log('[MonitorTraffic] Conectando en modo:', traffic.mode);
     setConnectionStatus('conectando');
     destroyConnections();
 
@@ -230,12 +234,22 @@ function MonitorTrafficLive() {
     };
 
     if (traffic.mode === 'ws') {
+      console.log('[MonitorTraffic] Iniciando WebSocket a:', settings.apiBaseUrl);
       socketRef.current = connectTrafficStream(settings.apiBaseUrl, handleStreamEvent, {
-        onOpen: () => setConnectionStatus('en tiempo real'),
-        onClose: () => setConnectionStatus('desconectado'),
-        onError: () => setConnectionStatus('error'),
+        onOpen: () => {
+          console.log('[MonitorTraffic] WebSocket CONECTADO');
+          setConnectionStatus('en tiempo real');
+        },
+        onClose: () => {
+          console.log('[MonitorTraffic] WebSocket CERRADO');
+          setConnectionStatus('desconectado');
+        },
+        onError: () => {
+          console.log('[MonitorTraffic] WebSocket ERROR');
+          setConnectionStatus('error');
+        },
       });
-      pollTimerRef.current = setInterval(tick, Math.max(traffic.pollingInterval, 8000));
+      // No hacer polling en modo WebSocket - los datos llegan por el stream
     } else {
       setConnectionStatus('polling');
       tick();
@@ -243,7 +257,7 @@ function MonitorTrafficLive() {
     }
 
     return destroyConnections;
-  }, [traffic.mode, traffic.pollingInterval, settings.apiBaseUrl, handleStreamEvent, requestRecentTraffic, appendTrafficBatch, destroyConnections]);
+  }, [traffic.mode, settings.apiBaseUrl]);
 
   useEffect(() => () => destroyConnections(), [destroyConnections]);
 
