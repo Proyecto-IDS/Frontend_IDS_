@@ -256,18 +256,13 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
   let retryTimer = null;
 
   const buildWsUrl = () => {
-    // TEMP: Conectar directamente al traffic-service para evitar problemas con el gateway
-    const trafficServiceUrl = 'ws://localhost:8083/traffic/stream';
-    return trafficServiceUrl;
-    
-    // Original code (comentado temporalmente):
-    // const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    // let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
-    // if (authToken) {
-    //   const separator = target.includes('?') ? '&' : '?';
-    //   target = `${target}${separator}token=${encodeURIComponent(authToken)}`;
-    // }
-    // return target;
+    const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
+    if (authToken) {
+      const separator = target.includes('?') ? '&' : '?';
+      target = `${target}${separator}token=${encodeURIComponent(authToken)}`;
+    }
+    return target;
   };
 
   const setupSocket = () => {

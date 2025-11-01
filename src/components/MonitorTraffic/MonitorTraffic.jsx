@@ -88,6 +88,8 @@ function MonitorTrafficLive() {
   const [createReason, setCreateReason] = useState('');
   const [createSeverity, setCreateSeverity] = useState('medium');
   const [selectedIncidentId, setSelectedIncidentId] = useState('');
+  const maxPacketsReached = useRef(false);
+  const packetCountRef = useRef(0);
 
   const listRef = useRef(null);
   const scrollTopRef = useRef(0);
@@ -147,26 +149,11 @@ function MonitorTrafficLive() {
     (type, payload) => {
       if (!type) return;
       
-      // Si ya llegamos al máximo, ignorar más paquetes
-      if (maxPacketsReached.current) {
-        return;
-      }
-      
       switch (type) {
         case 'packet_batch':
           const packets = payload?.packets || [];
           if (packets.length > 0) {
-            packetCountRef.current += packets.length;
             appendTrafficBatch(packets);
-            
-            // Cerrar WebSocket después de recibir 5 paquetes
-            if (packetCountRef.current >= 5 && socketRef.current) {
-              console.log('[MonitorTraffic] 5 paquetes recibidos, cerrando WebSocket');
-              maxPacketsReached.current = true;
-              socketRef.current.close?.();
-              socketRef.current = null;
-              setConnectionStatus('pausado (5 paquetes)');
-            }
           }
           break;
         case 'batch':
