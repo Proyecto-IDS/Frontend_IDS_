@@ -124,7 +124,8 @@ function MonitorTrafficLive() {
       .catch(() => {
         /* handled via toast en requestRecentTraffic */
       });
-  }, [appendTrafficBatch, requestRecentTraffic]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     lastTimestampRef.current = traffic.lastTimestamp;
@@ -256,7 +257,8 @@ function MonitorTrafficLive() {
     }
 
     return destroyConnections;
-  }, [traffic.mode, settings.apiBaseUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traffic.mode, settings.apiBaseUrl, traffic.pollingInterval]);
 
   useEffect(() => () => destroyConnections(), [destroyConnections]);
 

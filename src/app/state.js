@@ -579,7 +579,14 @@ export function AppProvider({ children }) {
           dispatch({ type: 'warroom/loaded', payload: existing });
           return existing;
         }
-        const warRoom = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
+        const response = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
+        // Normalizar respuesta del backend (warRoomId -> id)
+        const warRoom = {
+          id: response.warRoomId || response.id,
+          warRoomId: response.warRoomId || response.id,
+          incidentId: id,
+          ...response
+        };
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
@@ -591,7 +598,13 @@ export function AppProvider({ children }) {
         });
         if (!USE_MOCKS) {
           try {
-            const fallback = await postIncidentWarRoom(id, '');
+            const fallbackResponse = await postIncidentWarRoom(id, '');
+            const fallback = {
+              id: fallbackResponse.warRoomId || fallbackResponse.id,
+              warRoomId: fallbackResponse.warRoomId || fallbackResponse.id,
+              incidentId: id,
+              ...fallbackResponse
+            };
             cacheRef.current.warRooms.set(fallback.id, fallback);
             dispatch({ type: 'warroom/loaded', payload: fallback });
             return fallback;

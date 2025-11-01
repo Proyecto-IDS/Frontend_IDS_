@@ -43,13 +43,21 @@ function IncidentDetail({ params }) {
   }, [id, selectedIncident]);
 
   const handleOpenWarRoom = async () => {
+    console.log('🚨 handleOpenWarRoom llamado con incidentId:', id);
     try {
+      console.log('🚨 Llamando a openWarRoom...');
       const warRoom = await openWarRoom(id);
-      if (warRoom?.id) {
-        navigate(getRouteHash('war-room', { id: warRoom.id }));
+      console.log('🚨 War Room creado:', warRoom);
+      const warRoomId = warRoom?.id || warRoom?.warRoomId;
+      if (warRoomId) {
+        const hash = getRouteHash('war-room', { id: warRoomId });
+        console.log('🚨 Navegando a:', hash);
+        navigate(hash);
+      } else {
+        console.error('🚨 War Room sin ID:', warRoom);
       }
     } catch (error) {
-      console.error(error);
+      console.error('🚨 Error en handleOpenWarRoom:', error);
     }
   };
 
@@ -86,6 +94,10 @@ function IncidentDetail({ params }) {
     );
   }
 
+  // Debug: ver el status exacto
+  console.log('🔍 Incident status:', JSON.stringify(incident.status), 'Type:', typeof incident.status);
+  console.log('🔍 Is no-conocido?', incident.status === 'no-conocido');
+
   return (
     <div className="page incident-page">
       <header className="page-header">
@@ -101,17 +113,28 @@ function IncidentDetail({ params }) {
           <button type="button" className="btn subtle" onClick={() => navigate(getRouteHash('dashboard'))}>
             Volver
           </button>
-          {incident.status === 'conocido' ? (
+          {incident.status === 'conocido' && (
             <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
               Ver solución aplicada
             </button>
-          ) : null}
-          {incident.status === 'no-conocido' ? (
-            <button type="button" className="btn warn" onClick={handleOpenWarRoom}>
-              Abrir mesa de trabajo
-            </button>
-          ) : null}
-          {incident.status === 'falso-positivo' ? (
+          )}
+          {incident.status === 'no-conocido' && (
+            <>
+              {console.log('✅ Renderizando botón War Room')}
+              <button 
+                type="button" 
+                className="btn warn" 
+                onClick={() => {
+                  console.log('🚨 Click en War Room button');
+                  handleOpenWarRoom();
+                }}
+                style={{ display: 'block', visibility: 'visible' }}
+              >
+                🚨 Abrir mesa de trabajo
+              </button>
+            </>
+          )}
+          {incident.status === 'falso-positivo' && (
             <>
               <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
                 Cerrar como FP
@@ -120,12 +143,12 @@ function IncidentDetail({ params }) {
                 Escalar a no-conocido
               </button>
             </>
-          ) : null}
-          {incident.status === 'conocido' || incident.status === 'contenido' ? (
+          )}
+          {(incident.status === 'conocido' || incident.status === 'contenido') && (
             <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
               Registrar nota
             </button>
-          ) : null}
+          )}
         </div>
       </header>
 

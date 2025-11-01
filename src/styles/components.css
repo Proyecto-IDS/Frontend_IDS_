@@ -214,6 +214,22 @@
   border-color: var(--danger);
 }
 
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  text-decoration: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  transition: color 0.12s ease;
+}
+
+.btn-link:hover {
+  color: var(--primary-hover, #0056b3);
+  text-decoration: underline;
+}
+
 .panel {
   background: var(--card);
   border-radius: var(--radius);
