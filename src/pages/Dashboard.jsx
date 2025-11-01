@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import { connectTrafficStream } from '../app/api.js';
@@ -56,7 +56,8 @@ function Dashboard() {
       loadIncidents(filters);
     }, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [filters, loadIncidents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   // Convertir incidentes críticos en alertas
   useEffect(() => {

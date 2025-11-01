@@ -681,6 +681,165 @@
   font-size: 0.95rem;
 }
 
+/* Alertas de incidentes críticos */
+.alerts-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow);
+  margin: var(--space-lg) 0;
+}
+
+.alerts-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space);
+  padding-bottom: var(--space);
+  border-bottom: 1px solid var(--border);
+}
+
+.alerts-section header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.alerts-count {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--danger-weak, rgba(239, 68, 68, 0.16));
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.alerts-empty {
+  text-align: center;
+  padding: var(--space-lg);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.alerts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.alert-item {
+  border-radius: var(--radius);
+  border-left: 4px solid var(--border);
+  background: var(--bg-elev);
+  padding: var(--space);
+  transition: all 0.2s ease;
+}
+
+.alert-item:hover {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.alert-item.severity-critical,
+.alert-item.severity-critica {
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.alert-item.severity-high,
+.alert-item.severity-alta {
+  border-left-color: var(--warn);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.alert-item.severity-medium,
+.alert-item.severity-media {
+  border-left-color: var(--primary);
+  background: rgba(122, 162, 247, 0.08);
+}
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.alert-header time {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+}
+
+.alert-body {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.alert-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.alert-body span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Tarjeta de incidentes recientes */
+.table-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow);
+  margin: var(--space-lg) 0;
+}
+
+.table-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space);
+  padding-bottom: var(--space);
+  border-bottom: 1px solid var(--border);
+}
+
+.table-section header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.table-section header span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.traffic-filter-banner {
+  background: var(--primary-weak, rgba(122, 162, 247, 0.16));
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  padding: var(--space);
+  margin-bottom: var(--space);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.traffic-filter-banner span {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.traffic-filter-banner strong {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .form-panel fieldset {
   border: 1px solid var(--border);
   border-radius: var(--radius);
