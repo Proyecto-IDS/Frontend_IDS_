@@ -50,7 +50,6 @@ function Dashboard() {
     to: '',
   });
   const [alerts, setAlerts] = useState([]);
-  const alertsTimerRef = useRef(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -59,45 +58,23 @@ function Dashboard() {
     return () => window.clearTimeout(timeoutId);
   }, [filters, loadIncidents]);
 
-  // Polling lento para alertas (cada 10 segundos)
+  // Convertir incidentes críticos en alertas
   useEffect(() => {
-    console.log('[Dashboard] Iniciando polling de alertas cada 10s');
+    const criticalIncidents = incidents
+      .filter(i => i.severity === 'critica' || i.severity === 'alta')
+      .slice(0, 10)
+      .map(incident => ({
+        id: incident.id,
+        timestamp: incident.createdAt,
+        severity: incident.severity,
+        incidentId: incident.id,
+        packetId: incident.source || 'N/A',
+        score: incident.detection?.model_score,
+        model_version: incident.detection?.model_version,
+      }));
     
-    const fetchAlerts = async () => {
-      try {
-        // Obtener los últimos incidentes críticos como "alertas"
-        const criticalIncidents = incidents
-          .filter(i => i.severity === 'critica')
-          .slice(0, 5)
-          .map(incident => ({
-            id: incident.id,
-            timestamp: incident.createdAt,
-            severity: incident.severity,
-            incidentId: incident.id,
-            packetId: incident.source || 'N/A',
-            score: incident.detection?.model_score,
-            model_version: incident.detection?.model_version,
-          }));
-        
-        setAlerts(criticalIncidents);
-      } catch (error) {
-        console.error('[Dashboard] Error al obtener alertas:', error);
-      }
-    };
-    
-    // Primera carga inmediata
-    fetchAlerts();
-    
-    // Polling cada 10 segundos
-    alertsTimerRef.current = setInterval(fetchAlerts, 10000);
-    
-    return () => {
-      if (alertsTimerRef.current) {
-        clearInterval(alertsTimerRef.current);
-        alertsTimerRef.current = null;
-      }
-    };
-  }, [incidents]); // Re-ejecutar cuando cambien los incidentes
+    setAlerts(criticalIncidents);
+  }, [incidents]);
 
   const metrics = useMemo(() => {
     const total = incidents.length || 1;
@@ -264,9 +241,9 @@ function Dashboard() {
 
       <section className="alerts-section" aria-live="polite">
         <header>
-          <h3>Alertas de incidentes</h3>
-          <span className="connection-status connected">
-            🟢 Polling cada 10s
+          <h3>Alertas de incidentes críticos</h3>
+          <span className="alerts-count">
+            {alerts.length} alertas activas
           </span>
         </header>
         {alerts.length === 0 ? (
