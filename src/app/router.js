@@ -42,6 +42,7 @@ const ROUTES = [
     loader: () => import('../pages/Settings.jsx'),
     mapParams: () => ({}),
     private: true,
+    adminOnly: true,
   },
 ];
 
@@ -64,6 +65,7 @@ function matchRoute(hash) {
         path: route.path,
         hash: normalized,
         private: Boolean(route.private),
+        adminOnly: Boolean(route.adminOnly),
       };
     }
   }
@@ -74,6 +76,7 @@ function matchRoute(hash) {
     path: DEFAULT_ROUTE.path,
     hash: DEFAULT_ROUTE.path,
     private: Boolean(DEFAULT_ROUTE.private),
+    adminOnly: Boolean(DEFAULT_ROUTE.adminOnly),
   };
 }
 
@@ -142,7 +145,30 @@ export function getRouteHash(key, params = {}) {
   }
 }
 
-function RequireAuthGate({ render }) {
+// Helper to check if user has admin role
+function isAdmin(user) {
+  if (!user) return false;
+  // Check if user object has role or authorities
+  const role = user.role;
+  const authorities = user.authorities;
+  
+  // Check role string
+  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
+    return true;
+  }
+  
+  // Check authorities array
+  if (Array.isArray(authorities)) {
+    return authorities.some(auth => {
+      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
+      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
+    });
+  }
+  
+  return false;
+}
+
+function RequireAuthGate({ render, adminOnly = false }) {
   const { auth } = useAppState();
   const { authHandleReturn } = useAppActions();
   const hasAttemptedRef = useRef(false);
@@ -168,9 +194,24 @@ function RequireAuthGate({ render }) {
     return createElement(Loader, { label: 'Redirigiendo a login' });
   }
 
+  // Check admin access if route requires it
+  if (adminOnly && !isAdmin(auth.user)) {
+    return createElement('div', { className: 'page error-page' }, [
+      createElement('div', { className: 'panel', key: 'panel' }, [
+        createElement('h2', { key: 'title' }, 'Acceso denegado'),
+        createElement('p', { key: 'message' }, 'No tienes permisos para acceder a esta página.'),
+        createElement('button', {
+          key: 'back',
+          className: 'btn primary',
+          onClick: () => navigate('#/dashboard'),
+        }, 'Volver al Dashboard'),
+      ]),
+    ]);
+  }
+
   return render();
 }
 
-export function requireAuth(render) {
-  return createElement(RequireAuthGate, { render });
+export function requireAuth(render, adminOnly = false) {
+  return createElement(RequireAuthGate, { render, adminOnly });
 }
