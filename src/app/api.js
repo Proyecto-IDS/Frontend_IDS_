@@ -17,6 +17,7 @@ import {
   mockCreateIncidentFromPacket,
   createMockTrafficSocket,
 } from './mocks/traffic.mock.js';
+import { initGoogle, requestIdToken } from './googleAuth.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
 const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
@@ -79,16 +80,31 @@ export async function authStartGoogle(baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthStartGoogle();
   }
-  const url = toUrl(baseUrl, '/auth/google/start');
-  window.location.href = url.toString();
-  return { redirected: true };
-}
+  
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  
+  if (!clientId) {
+    throw new Error('Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID in .env file and restart the dev server.');
+  }
 
-export async function authFetchMe(baseUrl) {
+  // Initialize Google Sign-In
+  initGoogle(clientId);
+
+  // Request the id_token from Google
+  const idToken = await requestIdToken({ timeoutMs: 60000 });
+
+  // Send the id_token to our backend for validation and JWT generation
+  const url = toUrl(baseUrl, '/api/auth/google');
+  return request(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({ idToken }),
+  });
+}export async function authFetchMe(baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthFetchMe();
   }
-  const url = toUrl(baseUrl, '/auth/me');
+  const url = toUrl(baseUrl, '/api/auth/me');
   return request(url, { method: 'GET' });
 }
 
@@ -96,28 +112,28 @@ export async function authFetchSessionStatus(baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthFetchSessionStatus();
   }
-  const url = toUrl(baseUrl, '/auth/session/status');
-  return request(url, { method: 'GET' });
+  // Backend_IDS does not implement legacy session polling (`/auth/session/status`).
+  // Return null to indicate no server-side session polling is available. Callers
+  // should use GET /api/auth/me after obtaining a backend token instead.
+  return null;
 }
 
 export async function authVerifyTotp(ticket, code, baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthVerifyTotp(ticket, code);
   }
-  const url = toUrl(baseUrl, '/auth/mfa/verify');
-  return request(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({ ticket, code }),
-  });
+  // Backend_IDS currently does not support TOTP/MFA verification endpoints.
+  // Surface a clear error so the UI can handle it gracefully.
+  throw new Error('MFA/TOTP verification is not supported by Backend_IDS');
 }
 
 export async function authLogout(baseUrl) {
   if (shouldUseMock(baseUrl)) {
     return mockAuthLogout();
   }
-  const url = toUrl(baseUrl, '/auth/logout');
-  return request(url, { method: 'POST' });
+  // Backend_IDS does not expose a logout endpoint. Perform a no-op successful
+  // response so the UI can continue to clear local state without error.
+  return { ok: true };
 }
 
 // --- Incidentes -----------------------------------------------------------
