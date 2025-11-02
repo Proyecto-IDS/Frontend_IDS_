@@ -1,11 +1,34 @@
 import { memo } from 'react';
 
 const navItems = [
-  { key: 'dashboard', label: 'Dashboard', description: 'Resumen de incidentes' },
-  { key: 'settings', label: 'Configuración', description: 'Preferencias del sistema' },
+  { key: 'dashboard', label: 'Dashboard', description: 'Resumen de incidentes', adminOnly: false },
+  { key: 'settings', label: 'Configuración', description: 'Preferencias del sistema', adminOnly: true },
 ];
 
-const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate }) {
+// Helper to check if user has admin role
+function isAdmin(user) {
+  if (!user) return false;
+  const role = user.role;
+  const authorities = user.authorities;
+  
+  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
+    return true;
+  }
+  
+  if (Array.isArray(authorities)) {
+    return authorities.some(auth => {
+      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
+      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
+    });
+  }
+  
+  return false;
+}
+
+const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate, user }) {
+  const userIsAdmin = isAdmin(user);
+  const visibleItems = navItems.filter(item => !item.adminOnly || userIsAdmin);
+  
   return (
     <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''}`} aria-label="Navegación principal">
       <div className="sidebar-header">
@@ -22,7 +45,7 @@ const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNaviga
       </div>
       <nav className="sidebar-nav">
         <ul>
-          {navItems.map((item) => (
+          {visibleItems.map((item) => (
             <li key={item.key}>
               <button
                 type="button"

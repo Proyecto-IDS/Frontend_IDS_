@@ -59,7 +59,7 @@ function App() {
 
     const Page = route.Component;
     const renderPage = () => <Page params={route.params} />;
-    return route.private ? requireAuth(renderPage) : renderPage();
+    return route.private ? requireAuth(renderPage, route.adminOnly) : renderPage();
   }, [route]);
 
   const handleThemeCycle = () => {
@@ -84,6 +84,7 @@ function App() {
           onToggle={() => setSidebarCollapsed((value) => !value)}
           activeKey={route.key}
           onNavigate={handleNavigate}
+          user={auth.user}
         />
       )}
       <div className="app-workspace">
