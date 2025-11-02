@@ -716,8 +716,40 @@ export function AppProvider({ children }) {
     const authStartGoogleAction = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        await authStartGoogleApi(state.settings.apiBaseUrl);
+        const outcome = await authStartGoogleApi(state.settings.apiBaseUrl);
         dispatch({ type: 'auth/loading', payload: false });
+
+        // If the API returned a token (client-side flow against backend_IDS), finish login here
+        if (outcome && (outcome.token || outcome.access_token)) {
+          const token = outcome.token || outcome.access_token;
+
+          // Make subsequent requests authorized
+          try {
+            setAuthToken(token);
+          } catch (e) {
+            // ignore if setAuthToken not available
+          }
+
+          // Try to obtain user info from the response or fetch /api/auth/me
+          let user = outcome.user ?? null;
+          if (!user) {
+            try {
+              user = await authFetchMeApi(state.settings.apiBaseUrl);
+            } catch (e) {
+              // ignore; we'll still store minimal info if available
+              user = outcome.user ?? { email: outcome.email, role: outcome.role };
+            }
+          }
+
+          handleAuthSuccess(token, user, {
+            title: 'Sesión iniciada',
+            description: `Bienvenido, ${user?.name || user?.email || ''}`,
+            tone: 'success',
+          });
+
+          return { initiated: true };
+        }
+
         return { initiated: true };
       } catch (error) {
         dispatch({ type: 'auth/error', payload: error.message });
@@ -733,29 +765,16 @@ export function AppProvider({ children }) {
     const authHandleReturnAction = async () => {
       dispatch({ type: 'auth/loading', payload: true });
       try {
-        const status = await authFetchSessionStatusApi(state.settings.apiBaseUrl);
-        if (status?.mfa_required && status?.mfa_ticket) {
-          dispatch({ type: 'auth/mfa', payload: { ticket: status.mfa_ticket } });
-          addToast({
-            title: 'Autenticación adicional requerida',
-            description: 'Introduce el código de tu aplicación TOTP.',
-            tone: 'warn',
-          });
-          return { mfaRequired: true, ticket: status.mfa_ticket };
-        }
-
-        if (status?.access_token && status?.user) {
-          return handleAuthSuccess(status.access_token, status.user, {
-            title: 'Sesión iniciada',
-            description: `Bienvenido, ${status.user.name || status.user.email}`,
-            tone: 'success',
-          });
-        }
+        // For Backend_IDS we use a client-side flow: the frontend obtains an id_token
+        // and posts it to POST /api/auth/google. That call returns our backend JWT which
+        // we store locally. Here we simply validate an existing stored token by calling
+        // GET /api/auth/me. The legacy session polling endpoint (/auth/session/status)
+        // belongs to the other backend and is not used when working with Backend_IDS.
 
         if (state.auth.token) {
           try {
             const currentUser = await authFetchMeApi(state.settings.apiBaseUrl);
-            if (currentUser?.id) {
+            if (currentUser) {
               return handleAuthSuccess(state.auth.token, currentUser, null);
             }
           } catch (verifyError) {
