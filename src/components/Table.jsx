@@ -6,7 +6,7 @@ const Table = memo(function Table({
   columns,
   data = [],
   loading = false,
-  pageSize = 8,
+  pageSize = 5,
   rowKey = (row) => row.id,
   onRowClick,
   emptyMessage = 'Sin resultados',
@@ -52,25 +52,29 @@ const Table = memo(function Table({
           </tr>
         </thead>
         <tbody>
-          {paginatedData.map((row) => (
-            <tr
-              key={rowKey(row)}
-              tabIndex={0}
-              onClick={() => onRowClick?.(row)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onRowClick?.(row);
-                }
-              }}
-            >
-              {columns.map((column) => (
-                <td key={column.key}>
-                  {column.render ? column.render(row[column.key], row) : row[column.key]}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {paginatedData.map((row, index) => {
+            // Create unique key combining id + timestamp + page position
+            const uniqueKey = `${rowKey(row)}-${row.createdAt || row.timestamp || ''}-${page}-${index}`;
+            return (
+              <tr
+                key={uniqueKey}
+                tabIndex={0}
+                onClick={() => onRowClick?.(row)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onRowClick?.(row);
+                  }
+                }}
+              >
+                {columns.map((column) => (
+                  <td key={column.key}>
+                    {column.render ? column.render(row[column.key], row) : row[column.key]}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="table-footer">
