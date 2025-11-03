@@ -14,9 +14,8 @@ const PROTOCOLS = ['ALL', 'TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS', 'SSL'];
 const SEVERITIES = ['ALL', 'critical', 'high', 'medium', 'low'];
 
 function MonitorTraffic() {
-  // Debug: Forzar monitor habilitado para pruebas
-  const monitorEnabled = import.meta?.env?.VITE_MONITOR_ENABLED === 'true' || true;
-  console.log('[MonitorTraffic] VITE_MONITOR_ENABLED:', import.meta?.env?.VITE_MONITOR_ENABLED, 'monitorEnabled:', monitorEnabled);
+  // Enable monitor only if the env var explicitly enables it
+  const monitorEnabled = import.meta?.env?.VITE_MONITOR_ENABLED === 'true';
 
   if (!monitorEnabled) {
     return (
