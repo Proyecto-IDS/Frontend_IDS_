@@ -204,13 +204,5 @@ export async function mockCreateIncidentFromPacket({ packetId, reason, severity 
   });
 }
 
-export function seedMockTraffic(initial = config.seedSize) {
-  if (mockTrafficState.packets.length) return mockTrafficState.packets;
-  for (let index = 0; index < initial; index += 1) {
-    const packet = generatePacket();
-    pushPacket(packet);
-  }
-  return mockTrafficState.packets;
-}
-
-seedMockTraffic();
+// Mock traffic generator removed. Use real backend traffic stream instead.
+export default {};
