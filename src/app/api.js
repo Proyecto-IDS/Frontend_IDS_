@@ -1,34 +1,12 @@
-import {
-  mockFetchIncidentById,
-  mockFetchIncidents,
-  mockPostIncidentAction,
-  mockOpenWarRoom,
-  mockFetchWarRoomMessages,
-  mockPostWarRoomMessage,
-  mockAuthStartGoogle,
-  mockAuthFetchMe,
-  mockAuthFetchSessionStatus,
-  mockAuthVerifyTotp,
-  mockAuthLogout,
-} from './api.mock.js';
-import {
-  mockFetchRecentTraffic,
-  mockFetchPacketDetail,
-  mockCreateIncidentFromPacket,
-  createMockTrafficSocket,
-} from './mocks/traffic.mock.js';
 import { initGoogle, requestIdToken } from './googleAuth.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
-const USE_MOCKS = import.meta?.env?.VITE_USE_MOCKS === 'true';
 
 let authToken = null;
 
 export function setAuthToken(token) {
   authToken = token || null;
 }
-
-const shouldUseMock = (baseUrl) => USE_MOCKS || !baseUrl || !baseUrl.trim();
 
 const toUrl = (baseUrl, path, params) => {
   const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
@@ -47,9 +25,8 @@ const handleResponse = async (response) => {
     const text = await response.text();
     throw new Error(text || `Error ${response.status}`);
   }
-  if (response.status === 204) {
-    return null;
-  }
+  if (response.status === 204) return null;
+
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
     return response.json();
@@ -77,98 +54,84 @@ const request = async (url, init = {}) => {
 // --- Autenticación --------------------------------------------------------
 
 export async function authStartGoogle(baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockAuthStartGoogle();
-  }
-  
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  
+
   if (!clientId) {
     throw new Error('Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID in .env file and restart the dev server.');
   }
 
-  // Initialize Google Sign-In
   initGoogle(clientId);
-
-  // Request the id_token from Google
   const idToken = await requestIdToken({ timeoutMs: 60000 });
 
-  // Send the id_token to our backend for validation and JWT generation
   const url = toUrl(baseUrl, '/api/auth/google');
   return request(url, {
     method: 'POST',
     headers: DEFAULT_HEADERS,
     body: JSON.stringify({ idToken }),
   });
-}export async function authFetchMe(baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockAuthFetchMe();
-  }
+}
+
+export async function authFetchMe(baseUrl) {
   const url = toUrl(baseUrl, '/api/auth/me');
   return request(url, { method: 'GET' });
 }
 
-export async function authFetchSessionStatus(baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockAuthFetchSessionStatus();
-  }
-  // Backend_IDS does not implement legacy session polling (`/auth/session/status`).
-  // Return null to indicate no server-side session polling is available. Callers
-  // should use GET /api/auth/me after obtaining a backend token instead.
+export async function authFetchSessionStatus() {
   return null;
 }
 
-export async function authVerifyTotp(ticket, code, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockAuthVerifyTotp(ticket, code);
-  }
-  // Backend_IDS currently does not support TOTP/MFA verification endpoints.
-  // Surface a clear error so the UI can handle it gracefully.
+export async function authVerifyTotp() {
   throw new Error('MFA/TOTP verification is not supported by Backend_IDS');
 }
 
-export async function authLogout(baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockAuthLogout();
-  }
-  // Backend_IDS does not expose a logout endpoint. Perform a no-op successful
-  // response so the UI can continue to clear local state without error.
+export async function authLogout() {
   return { ok: true };
 }
 
-// --- Incidentes -----------------------------------------------------------
+// --- Incidentes (Alertas en Backend_IDS) ---
 
 export async function getIncidents(filters = {}, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockFetchIncidents(filters);
+  // Backend_IDS uses /api/alerts instead of /incidents
+  try {
+    // Ensure we have a valid baseUrl
+    const url = baseUrl || 'http://localhost:8080';
+    const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
+    const alertsUrl = toUrl(url, '/api/alerts', { limit });
+    
+    console.log('📡 Fetching alerts from:', alertsUrl.toString());
+    const alerts = await request(alertsUrl, { method: 'GET' });
+    
+    console.log('✅ Fetched alerts:', alerts?.length || 0);
+    
+    // Convert alerts to incident format
+    if (!Array.isArray(alerts)) return [];
+    return alerts.map((alert) => ({
+      id: alert.incidentId || `alert-${alert.id}`,
+      source: alert.packetId,
+      severity: alert.severity,
+      createdAt: alert.timestamp,
+      detection: {
+        model_version: alert.modelVersion || alert.model_version,
+        model_score: alert.score,
+      },
+      status: 'no-conocido',
+      type: 'alert',
+      linkedPacketId: alert.packetId,
+      _alertId: alert.id,
+      warRoomId: alert.warRoomId,  // Include warRoomId from backend
+    }));
+  } catch (error) {
+    console.error('❌ Failed to fetch alerts:', error);
+    throw error;
   }
-  const url = toUrl(baseUrl, '/incidents', {
-    query: filters.query,
-    status: filters.status,
-    severity: filters.severity,
-    from: filters.from,
-    to: filters.to,
-    filter_by_ip: filters.filterByIp,
-    packet_id: filters.packetId,
-  });
-  const response = await request(url, { method: 'GET' });
-  // Backend returns paginated response: {items: [...], page: 0, size: 20, total: 3}
-  // Extract just the items array for compatibility with existing code
-  return response?.items || [];
 }
 
 export async function getIncidentById(id, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockFetchIncidentById(id);
-  }
   const url = toUrl(baseUrl, `/incidents/${id}`);
   return request(url, { method: 'GET' });
 }
 
 export async function postIncidentAction(id, body, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockPostIncidentAction(id, body?.action);
-  }
   const url = toUrl(baseUrl, `/incidents/${id}/actions`);
   return request(url, {
     method: 'POST',
@@ -178,9 +141,6 @@ export async function postIncidentAction(id, body, baseUrl) {
 }
 
 export async function postIncidentFromPacket(packetId, reason, severity, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockCreateIncidentFromPacket({ packetId, reason, severity });
-  }
   const url = toUrl(baseUrl, '/incidents/from-packet');
   return request(url, {
     method: 'POST',
@@ -190,83 +150,102 @@ export async function postIncidentFromPacket(packetId, reason, severity, baseUrl
 }
 
 export async function postIncidentWarRoom(id, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockOpenWarRoom(id);
-  }
-  const url = toUrl(baseUrl, `/incidents/${id}/war-room`);
-  return request(url, { method: 'POST' });
+  // Create a meeting instead of using non-existent war-room endpoint
+  const url = toUrl(baseUrl, '/api/meetings');
+  
+  // Format: ISO_LOCAL_DATE_TIME (YYYY-MM-DDTHH:mm:ss - no Z, no milliseconds)
+  const formatLocalDateTime = (date) => {
+    const isoString = date.toISOString(); // 2025-11-03T21:27:38.575Z
+    return isoString.substring(0, 19); // Take only YYYY-MM-DDTHH:mm:ss
+  };
+  
+  const now = new Date();
+  const startTime = formatLocalDateTime(now);
+  const endTime = formatLocalDateTime(new Date(now.getTime() + 3600000)); // +1 hour
+  
+  return request(url, { 
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      title: `Meeting for Incident ${id}`,
+      description: `Discussion and response coordination for incident ${id}`,
+      startTime,
+      endTime,
+      incidentId: id
+    })
+  });
 }
 
-// --- War Room -------------------------------------------------------------
+// --- War Room / Meeting ---------------------------------------------------
 
-export async function getWarRoomMessages(warRoomId, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockFetchWarRoomMessages(warRoomId);
-  }
-  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
+export async function getMeetingDetails(meetingId, baseUrl) {
+  // Get full meeting details including participants, status, etc.
+  const url = toUrl(baseUrl, `/api/meetings/${meetingId}`);
   return request(url, { method: 'GET' });
 }
 
-export async function postWarRoomMessage(warRoomId, message, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockPostWarRoomMessage(warRoomId, message);
-  }
-  const url = toUrl(baseUrl, `/war-room/${warRoomId}/messages`);
-  return request(url, {
+export async function joinMeeting(code, baseUrl) {
+  // Join an existing meeting using the meeting code
+  const url = toUrl(baseUrl, '/api/meetings/join');
+  return request(url, { 
     method: 'POST',
     headers: DEFAULT_HEADERS,
-    body: JSON.stringify(message),
+    body: JSON.stringify({ code })
   });
+}
+
+export async function getWarRoomMessages(warRoomId, baseUrl) {
+  // TODO: Implement meeting messages endpoint
+  // For now, return empty array to avoid errors
+  return [];
+}
+
+export async function postWarRoomMessage(warRoomId, message, baseUrl) {
+  // TODO: Implement meeting message creation
+  // For now, return success response
+  return { 
+    userMessage: { id: Date.now(), role: 'user', content: message.content, createdAt: new Date().toISOString() },
+    assistantMessage: null
+  };
 }
 
 // --- Tráfico --------------------------------------------------------------
 
 export async function getTrafficRecent({ since, limit } = {}, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockFetchRecentTraffic({ since, limit });
-  }
-  const url = toUrl(baseUrl, '/traffic/recent', {
-    since,
-    limit,
-  });
+  const url = toUrl(baseUrl, '/traffic/recent', { since, limit });
   return request(url, { method: 'GET' });
 }
 
 export async function getTrafficPacketById(packetId, baseUrl) {
-  if (shouldUseMock(baseUrl)) {
-    return mockFetchPacketDetail(packetId);
-  }
   const url = toUrl(baseUrl, `/traffic/packets/${packetId}`);
+  return request(url, { method: 'GET' });
+}
+
+// --- Alertas (métricas) ---
+
+export async function getAlertsCount(baseUrl) {
+  const url = toUrl(baseUrl, '/api/alerts/count');
+  return request(url, { method: 'GET' });
+}
+
+export async function getAlertsBySeverity(baseUrl) {
+  const url = toUrl(baseUrl, '/api/alerts/count/by-severity');
+  return request(url, { method: 'GET' });
+}
+
+export async function getAlertsToday(baseUrl) {
+  const url = toUrl(baseUrl, '/api/alerts/today');
+  return request(url, { method: 'GET' });
+}
+
+export async function getAlertsTodayCount(baseUrl) {
+  const url = toUrl(baseUrl, '/api/alerts/today/count');
   return request(url, { method: 'GET' });
 }
 
 // --- WebSocket ------------------------------------------------------------
 
 export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
-  const useMock = shouldUseMock(baseUrl);
-
-  if (useMock) {
-    const socket = createMockTrafficSocket();
-    socket.onopen = () => onOpen?.();
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload?.type) {
-          onEvent?.(payload.type, payload);
-        }
-      } catch (error) {
-        console.warn('Mock packet parse error', error);
-      }
-    };
-    socket.onclose = () => onClose?.();
-    socket.onerror = (error) => onError?.(error);
-    return {
-      close() {
-        socket.close();
-      },
-    };
-  }
-
   let closedExplicitly = false;
   let currentSocket = null;
   let retryTimer = null;
@@ -274,50 +253,43 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
-    if (authToken) {
-      const separator = target.includes('?') ? '&' : '?';
-      target = `${target}${separator}token=${encodeURIComponent(authToken)}`;
-    }
+    console.log('🔌 Building WebSocket URL:', target);
     return target;
   };
 
   const setupSocket = () => {
     if (closedExplicitly) return;
     try {
-      currentSocket = new WebSocket(buildWsUrl());
+      const wsUrl = buildWsUrl();
+      console.log('🔗 Connecting to WebSocket:', wsUrl);
+      currentSocket = new WebSocket(wsUrl);
     } catch (error) {
+      console.error('❌ Error creating WebSocket:', error);
       onError?.(error);
       scheduleReconnect();
       return;
     }
 
-    currentSocket.addEventListener('open', () => {
-      onOpen?.();
-    });
-
+    currentSocket.addEventListener('open', () => onOpen?.());
     currentSocket.addEventListener('message', (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload?.type) {
-          onEvent?.(payload.type, payload);
-        }
+        if (payload?.type) onEvent?.(payload.type, payload);
       } catch (error) {
         console.warn('Traffic stream parse error', error);
       }
     });
 
     currentSocket.addEventListener('close', () => {
+      console.log('⚠️ WebSocket closed');
       onClose?.();
-      if (!closedExplicitly) {
-        scheduleReconnect();
-      }
+      if (!closedExplicitly) scheduleReconnect();
     });
 
-    currentSocket.addEventListener('error', () => {
-      onError?.();
-      if (!closedExplicitly) {
-        currentSocket?.close();
-      }
+    currentSocket.addEventListener('error', (event) => {
+      console.error('❌ WebSocket error:', event);
+      onError?.(event);
+      if (!closedExplicitly) currentSocket?.close();
     });
   };
 
@@ -334,16 +306,13 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
   return {
     close() {
       closedExplicitly = true;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = null;
-      }
+      if (retryTimer) clearTimeout(retryTimer);
       currentSocket?.close();
     },
   };
 }
 
-// --- Exports agrupados (legacy compatibility) -----------------------------
+// --- Export agrupado ------------------------------------------------------
 
 export const api = {
   authStartGoogle,
@@ -358,9 +327,13 @@ export const api = {
   postIncidentWarRoom,
   getWarRoomMessages,
   postWarRoomMessage,
-  getTrafficRecent,
+  getTrafficRecent, 
   getTrafficPacketById,
   connectTrafficStream,
+  getAlertsCount,
+  getAlertsBySeverity,
+  getAlertsToday,
+  getAlertsTodayCount,
 };
 
 export default api;
