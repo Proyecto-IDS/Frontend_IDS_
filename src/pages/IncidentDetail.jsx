@@ -26,7 +26,7 @@ const severityTone = {
 
 function IncidentDetail({ params }) {
   const { id } = params;
-  const { selectedIncident, loading } = useAppState();
+  const { selectedIncident, loading, auth } = useAppState();
   const { loadIncidentById, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -41,6 +41,8 @@ function IncidentDetail({ params }) {
     }
     return null;
   }, [id, selectedIncident]);
+
+  const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
 
   const handleOpenWarRoom = async () => {
     console.log('🚨 handleOpenWarRoom llamado con incidentId:', id);
@@ -120,18 +122,34 @@ function IncidentDetail({ params }) {
           )}
           {incident.status === 'no-conocido' && (
             <>
-              {console.log('✅ Renderizando botón War Room')}
-              <button 
-                type="button" 
-                className="btn warn" 
-                onClick={() => {
-                  console.log('🚨 Click en War Room button');
-                  handleOpenWarRoom();
-                }}
-                style={{ display: 'block', visibility: 'visible' }}
-              >
-                🚨 Abrir mesa de trabajo
-              </button>
+              {console.log('✅ Renderizando botón War Room', { isAdmin, warRoomId: incident.warRoomId })}
+              {isAdmin ? (
+                <button 
+                  type="button" 
+                  className="btn warn" 
+                  onClick={() => {
+                    console.log('🚨 Click en War Room button (ADMIN)');
+                    handleOpenWarRoom();
+                  }}
+                  style={{ display: 'block', visibility: 'visible' }}
+                >
+                  🚨 Generar reunión
+                </button>
+              ) : incident.warRoomId ? (
+                <button 
+                  type="button" 
+                  className="btn primary" 
+                  onClick={() => {
+                    console.log('🚨 Click en Join Meeting button (USER)', incident.warRoomId);
+                    // Directamente navegar a la reunión
+                    const hash = getRouteHash('war-room', { id: incident.warRoomId });
+                    navigate(hash);
+                  }}
+                  style={{ display: 'block', visibility: 'visible' }}
+                >
+                  📋 Unirse a reunión
+                </button>
+              ) : null}
             </>
           )}
           {incident.status === 'falso-positivo' && (
