@@ -103,12 +103,49 @@ function WarRoom({ params }) {
 
   const messages = warRoom.messages || [];
 
+  // Debug: log war room data
+  console.log('🏢 War Room Data:', {
+    id: warRoom.id,
+    code: warRoom.code,
+    title: warRoom.title,
+    startTime: warRoom.startTime,
+    endTime: warRoom.endTime,
+    status: warRoom.status,
+    participantEmails: warRoom.participantEmails,
+    currentParticipantCount: warRoom.currentParticipantCount,
+    maxParticipants: warRoom.maxParticipants,
+  });
+
   return (
     <div className="page war-room-page">
       <header className="page-header">
         <div>
-          <h2>{warRoom.id}</h2>
+          <h2>ID: {warRoom.id}</h2>
           <p>Incidente {incidentId}</p>
+          <div className="war-room-info" style={{ fontSize: '0.9em', marginTop: '0.5em', opacity: 0.8 }}>
+            <span>Código: <strong>{warRoom.code}</strong></span>
+            {warRoom.startTime && (
+              <>
+                <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleString()}</strong></span>
+              </>
+            )}
+            {warRoom.endTime && (
+              <>
+                <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
+              </>
+            )}
+            {warRoom.status && (
+              <>
+                <span style={{ marginLeft: '1em' }}>Estado: <strong>{warRoom.status}</strong></span>
+              </>
+            )}
+          </div>
+          <div className="war-room-participants" style={{ fontSize: '0.85em', marginTop: '0.8em', opacity: 0.7 }}>
+            <span>Participantes: <strong>{warRoom.participantEmails?.size || warRoom.currentParticipantCount || 0}</strong></span>
+            {warRoom.maxParticipants && (
+              <span style={{ marginLeft: '1em' }}>/ Máximo: <strong>{warRoom.maxParticipants}</strong></span>
+            )}
+          </div>
         </div>
         <div className="actions-row">
           <button
