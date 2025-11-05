@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import Loader from '../components/Loader.jsx';
@@ -14,13 +14,15 @@ const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 100
 
 function WarRoom({ params }) {
   const warRoomId = params.id;
-  const { warRooms, loading } = useAppState();
+  const { warRooms, loading, auth } = useAppState();
   const {
     openWarRoom,
     loadWarRoomMessages,
     sendWarRoomMessage,
     updateIncidentStatus,
     updateWarRoomChecklist,
+    joinWarRoom,
+    leaveWarRoom,
   } = useAppActions();
 
   const warRoom = warRooms[warRoomId];
@@ -39,6 +41,49 @@ function WarRoom({ params }) {
       openWarRoom(incidentId);
     }
   }, [warRoom, incidentId, openWarRoom]);
+
+  // Track if we've joined this meeting
+  const hasJoinedRef = useRef(false);
+  const meetingIdRef = useRef(null);
+
+  // Auto-join meeting when entering the room if user is not a participant
+  useEffect(() => {
+    if (!warRoom || !auth.user) return;
+    
+    const userEmail = auth.user.email;
+    const participants = warRoom.participantEmails || [];
+    const isParticipant = participants.includes(userEmail);
+    
+    // Only join if we haven't joined yet and we're not already a participant
+    if (!isParticipant && warRoom.code && !hasJoinedRef.current) {
+      console.log('Auto-joining meeting with code:', warRoom.code);
+      joinWarRoom(warRoom.code)
+        .then(() => {
+          hasJoinedRef.current = true;
+          meetingIdRef.current = warRoom.id;
+          console.log('Successfully joined meeting:', warRoom.id);
+        })
+        .catch(error => {
+          console.error('Failed to auto-join meeting:', error);
+        });
+    } else if (isParticipant && !hasJoinedRef.current) {
+      // We're already a participant (maybe we created the meeting)
+      hasJoinedRef.current = true;
+      meetingIdRef.current = warRoom.id;
+    }
+  }, [warRoom?.id, warRoom?.code, warRoom?.participantEmails, auth.user?.email, joinWarRoom]);
+
+  // Cleanup: leave meeting when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      if (hasJoinedRef.current && meetingIdRef.current) {
+        console.log('👋 Leaving meeting on unmount:', meetingIdRef.current);
+        leaveWarRoom(meetingIdRef.current);
+        hasJoinedRef.current = false;
+        meetingIdRef.current = null;
+      }
+    };
+  }, [leaveWarRoom]);
 
   useEffect(() => {
     if (!warRoomId) return;
@@ -104,7 +149,7 @@ function WarRoom({ params }) {
   const messages = warRoom.messages || [];
 
   // Debug: log war room data
-  console.log('🏢 War Room Data:', {
+  console.log('War Room Data:', {
     id: warRoom.id,
     code: warRoom.code,
     title: warRoom.title,
@@ -141,7 +186,7 @@ function WarRoom({ params }) {
             )}
           </div>
           <div className="war-room-participants" style={{ fontSize: '0.85em', marginTop: '0.8em', opacity: 0.7 }}>
-            <span>Participantes: <strong>{warRoom.participantEmails?.size || warRoom.currentParticipantCount || 0}</strong></span>
+            <span>Participantes: <strong>{warRoom.currentParticipantCount || warRoom.participantEmails?.length || 0}</strong></span>
             {warRoom.maxParticipants && (
               <span style={{ marginLeft: '1em' }}>/ Máximo: <strong>{warRoom.maxParticipants}</strong></span>
             )}
