@@ -23,6 +23,12 @@ const severityOptions = [
   { value: 'baja', label: 'Bajas' },
 ];
 
+const meetingOptions = [
+  { value: '', label: 'Todas' },
+  { value: 'inactive', label: 'Sin reunión' },
+  { value: 'active', label: 'Con reunión activa' },
+];
+
 const statusTone = {
   conocido: 'success',
   'no-conocido': 'warn',
@@ -64,6 +70,7 @@ function Dashboard() {
     query: '',
     status: '',
     severity: '',
+    meeting: '',
     from: '',
     to: '',
   });
@@ -73,15 +80,18 @@ function Dashboard() {
   const itemsPerPage = 5;
   const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
 
-  // Load incidents on first mount
+  // Load incidents on first mount (only if authenticated)
   useEffect(() => {
-    console.log('📥 Loading incidents on mount');
-    loadIncidents({});
+    if (auth?.token) {
+      loadIncidents({});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [auth?.token]);
 
-  // Apply filters when they change
+  // Apply filters when they change (only if authenticated)
   useEffect(() => {
+    if (!auth?.token) return;
+    
     setIncidentsPage(1); // Reset to first page when filters change
     const timeoutId = window.setTimeout(() => {
       // Convert Spanish severity to English for backend
@@ -95,12 +105,11 @@ function Dashboard() {
           filters.severity
         ) : '',
       };
-      console.log('🔍 Applying filters:', { userFilters: filters, backendFilters });
       loadIncidents(backendFilters);
     }, 250);
     return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, auth?.token]);
 
   // Convertir incidentes críticos en alertas
   // Solo mostrar alertas activas (no resueltsa, no falsos positivos)
@@ -124,15 +133,6 @@ function Dashboard() {
         score: incident.detection?.model_score,
         model_version: incident.detection?.model_version,
       }));
-    
-    // Debug: log the filtered alerts
-    if (criticalIncidents.length === 0 && incidents.length > 0) {
-      console.log('📊 Debug Alerts Filter:', {
-        totalIncidents: incidents.length,
-        sampleIncident: incidents[0],
-        filteredAlerts: criticalIncidents.length,
-      });
-    }
     
     setAlerts(criticalIncidents);
     setAlertsPage(1); // Reset to first page when alerts change
@@ -218,37 +218,7 @@ function Dashboard() {
         key: 'actions',
         label: 'Acciones',
         render: (_, row) => {
-          console.log('🔍 DEBUG render action:', { 
-            isAdmin, 
-            role: auth?.user?.role,
-            roles: auth?.user?.roles,
-            auth: auth?.user,
-            warRoomId: row.warRoomId,
-            status: row.status,
-            rowId: row.id 
-          });
-          
-          // ADMIN: puede crear reunión si el incidente está sin conocer
-          if (isAdmin) {
-            if (row.status === 'no-conocido') {
-              return (
-                <button
-                  type="button"
-                  className="btn-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenWarRoom(row.id);
-                  }}
-                  title="Crear reunión"
-                >
-                  🚨 Crear reunión
-                </button>
-              );
-            }
-            return '—';
-          }
-          
-          // USER: puede unirse solo si existe warRoomId
+          // Si ya existe warRoomId, cualquiera puede unirse
           if (row.warRoomId) {
             return (
               <button
@@ -260,7 +230,24 @@ function Dashboard() {
                 }}
                 title="Unirse a reunión"
               >
-                📋 Unirse a reunión
+                � Unirse a reunión
+              </button>
+            );
+          }
+          
+          // ADMIN: puede crear reunión si el incidente está sin conocer y no hay warRoomId
+          if (isAdmin && row.status === 'no-conocido') {
+            return (
+              <button
+                type="button"
+                className="btn-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenWarRoom(row.id);
+                }}
+                title="Crear reunión"
+              >
+                � Crear reunión
               </button>
             );
           }
@@ -299,6 +286,17 @@ function Dashboard() {
         const normalizedIncidentSeverity = normalizeSeverity(incident.severity);
         return normalizedIncidentSeverity === filters.severity;
       });
+    }
+
+    // Filter by meeting status
+    if (filters.meeting) {
+      if (filters.meeting === 'active') {
+        // Con reunión activa: tiene warRoomId
+        filtered = filtered.filter((incident) => incident.warRoomId);
+      } else if (filters.meeting === 'inactive') {
+        // Sin reunión: no tiene warRoomId
+        filtered = filtered.filter((incident) => !incident.warRoomId);
+      }
     }
 
     // Filter by search query
@@ -350,7 +348,7 @@ function Dashboard() {
         navigate(getRouteHash('war-room', { id: warRoomId }));
       }
     } catch (error) {
-      console.error('Error opening war room:', error);
+      // Error handling
     }
   };
 
@@ -506,7 +504,21 @@ function Dashboard() {
       <section className="table-section">
         <header>
           <h3>Incidentes recientes</h3>
-          <span>{displayIncidents.length} registros</span>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div className="chip-group" role="group" aria-label="Filtrar por estado de reunión">
+              {meetingOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`chip ${filters.meeting === option.value ? 'is-active' : ''}`}
+                  onClick={() => setFilters((current) => ({ ...current, meeting: option.value }))}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span>{displayIncidents.length} registros</span>
+          </div>
         </header>
         {traffic.selectedIp ? (
           <div className="traffic-filter-banner">

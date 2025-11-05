@@ -23,6 +23,7 @@ function WarRoom({ params }) {
     updateWarRoomChecklist,
     joinWarRoom,
     leaveWarRoom,
+    addToast,
   } = useAppActions();
 
   const warRoom = warRooms[warRoomId];
@@ -56,15 +57,17 @@ function WarRoom({ params }) {
     
     // Only join if we haven't joined yet and we're not already a participant
     if (!isParticipant && warRoom.code && !hasJoinedRef.current) {
-      console.log('Auto-joining meeting with code:', warRoom.code);
       joinWarRoom(warRoom.code)
         .then(() => {
           hasJoinedRef.current = true;
           meetingIdRef.current = warRoom.id;
-          console.log('Successfully joined meeting:', warRoom.id);
         })
         .catch(error => {
-          console.error('Failed to auto-join meeting:', error);
+          addToast({
+            title: 'No se pudo unir a la reunión',
+            description: error.message || 'Intenta unirte nuevamente más tarde.',
+            tone: 'danger',
+          });
         });
     } else if (isParticipant && !hasJoinedRef.current) {
       // We're already a participant (maybe we created the meeting)
@@ -77,7 +80,6 @@ function WarRoom({ params }) {
   useEffect(() => {
     return () => {
       if (hasJoinedRef.current && meetingIdRef.current) {
-        console.log('👋 Leaving meeting on unmount:', meetingIdRef.current);
         leaveWarRoom(meetingIdRef.current);
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
@@ -147,19 +149,6 @@ function WarRoom({ params }) {
   }
 
   const messages = warRoom.messages || [];
-
-  // Debug: log war room data
-  console.log('War Room Data:', {
-    id: warRoom.id,
-    code: warRoom.code,
-    title: warRoom.title,
-    startTime: warRoom.startTime,
-    endTime: warRoom.endTime,
-    status: warRoom.status,
-    participantEmails: warRoom.participantEmails,
-    currentParticipantCount: warRoom.currentParticipantCount,
-    maxParticipants: warRoom.maxParticipants,
-  });
 
   return (
     <div className="page war-room-page">

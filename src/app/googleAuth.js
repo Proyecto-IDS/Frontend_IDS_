@@ -7,8 +7,38 @@ let initialized = false;
 let pendingResolver = null;
 let pendingRejecter = null;
 let storedClientId = null;
+let gsiScriptLoaded = false;
 
-export function initGoogle(clientId) {
+// Load Google Identity Services script dynamically
+function loadGSIScript() {
+  if (gsiScriptLoaded || typeof window === 'undefined') {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    // Check if already loaded
+    if (window.google?.accounts?.id) {
+      gsiScriptLoaded = true;
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      gsiScriptLoaded = true;
+      resolve();
+    };
+    script.onerror = () => {
+      reject(new Error('Failed to load Google Identity Services'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+export async function initGoogle(clientId) {
   if (!clientId || typeof window === 'undefined') {
     console.warn('initGoogle: no client ID or not in browser');
     return;
@@ -20,6 +50,9 @@ export function initGoogle(clientId) {
   if (initialized) {
     return;
   }
+
+  // Load GSI script first
+  await loadGSIScript();
   
   // Wait for GSI to be available
   const waitForGSI = () => {

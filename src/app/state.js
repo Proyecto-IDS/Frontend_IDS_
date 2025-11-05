@@ -76,7 +76,6 @@ function loadStoredSettings() {
     }
     return merged;
   } catch (error) {
-    console.warn('Failed to parse settings from storage', error);
     return defaultSettings;
   }
 }
@@ -96,7 +95,6 @@ function loadStoredAuth() {
       user: parsed?.user || null,
     };
   } catch (error) {
-    console.warn('Failed to parse auth state from storage', error);
     return { token: null, user: null };
   }
 }
@@ -112,7 +110,7 @@ const persistAuthState = (authState) => {
       }),
     );
   } catch (error) {
-    console.warn('Failed to persist auth state', error);
+    // Failed to persist
   }
 };
 
@@ -121,7 +119,7 @@ const clearAuthState = () => {
   try {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch (error) {
-    console.warn('Failed to clear auth state', error);
+    // Failed to clear
   }
 };
 
@@ -198,7 +196,15 @@ function reducer(state, action) {
       return { ...state, loading: { ...state.loading, incident: action.payload } };
     }
     case 'incident/loaded': {
-      return { ...state, selectedIncident: action.payload };
+      // Update both selectedIncident and the incident in the incidents array
+      const updatedIncidents = state.incidents.map((item) =>
+        item.id === action.payload.id ? action.payload : item,
+      );
+      return { 
+        ...state, 
+        selectedIncident: action.payload,
+        incidents: updatedIncidents
+      };
     }
     case 'incident/updated': {
       const { incident } = action.payload;
@@ -210,6 +216,9 @@ function reducer(state, action) {
           ? { ...state.selectedIncident, ...incident }
           : state.selectedIncident;
       return { ...state, incidents: updatedIncidents, selectedIncident: selected };
+    }
+    case 'incident/cleared': {
+      return { ...state, selectedIncident: null };
     }
     case 'warroom/loading': {
       return { ...state, loading: { ...state.loading, warRoom: action.payload } };
@@ -300,6 +309,28 @@ function reducer(state, action) {
           error: null,
           mfaRequired: false,
           mfaTicket: null,
+        },
+        incidents: [],
+        selectedIncident: null,
+        alerts: {
+          items: [],
+          count: 0,
+          loading: false,
+        },
+        warRoom: {
+          id: null,
+          code: null,
+          participants: [],
+          messages: [],
+          checklist: [],
+          loading: false,
+        },
+        traffic: {
+          ...state.traffic,
+          packets: [],
+          pendingPackets: [],
+          lastTimestamp: 0,
+          paused: false,
         },
       };
     }
@@ -486,21 +517,17 @@ export function AppProvider({ children }) {
     
     // Solo conectar si hay baseUrl Y token (usuario autenticado)
     if (!baseUrl || !token) {
-      console.log('WebSocket skipped: baseUrl=' + !!baseUrl + ', token=' + !!token);
       return;
     }
     
-    console.log('Setting up WebSocket connection...');
 
     const handleTrafficEvent = (type, payload) => {
-      console.log('WebSocket event:', type, payload);
       
       if (type === 'alert' && payload?.alert) {
         const alert = payload.alert;
         const incidentId = alert.incidentId || `alert-${alert.id}`;
         const alertKey = `${incidentId}-${alert.timestamp}`;
         
-        console.log('Processing alert:', { incidentId, severity: alert.severity });
         
         // Create or update incident from alert
         const incident = {
@@ -543,7 +570,6 @@ export function AppProvider({ children }) {
           });
         }
       } else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
-        console.log('War room created event:', payload);
         const incidentId = payload.incidentId;
         const warRoom = payload.warRoom;
 
@@ -577,7 +603,6 @@ export function AppProvider({ children }) {
           tone: 'info',
         });
       } else if (type === 'warroom.participants' && payload?.warRoomId) {
-        console.log('Participants update:', payload);
         const { warRoomId, currentParticipantCount, action, userEmail } = payload;
         
         // Get current warRoom from cache or state
@@ -603,29 +628,25 @@ export function AppProvider({ children }) {
             updated.participantEmails = emails;
           }
           
-          console.log('Updating warRoom:', updated);
           cacheRef.current.warRooms.set(warRoomId, updated);
           dispatch({ type: 'warroom/loaded', payload: updated });
-        } else {
-          console.warn('War room not found in cache:', warRoomId);
         }
       }
     };
 
     socketRef.current = connectTrafficStream(baseUrl, handleTrafficEvent, {
       onOpen: () => {
-        console.log('WebSocket conectado a:', baseUrl);
+        // Connected
       },
       onClose: () => {
-        console.log('WebSocket desconectado');
+        // Disconnected
       },
       onError: (error) => {
-        console.error('Error en WebSocket:', error);
+        // Error
       },
     });
 
     return () => {
-      console.log('🔌 Cleaning up WebSocket connection...');
       socketRef.current?.close();
     };
   }, []);  // Empty dependency array - only run once on mount
@@ -688,12 +709,6 @@ export function AppProvider({ children }) {
           ...wsOnlyAlerts
         ];
         
-        console.log('🔄 Merging incidents:', {
-          apiAlerts: apiAlerts.length,
-          wsOnlyAlerts: wsOnlyAlerts.length,
-          total: merged.length
-        });
-        
         dispatch({ type: 'incidents/loaded', payload: merged });
         incidents.forEach((incident) => {
           cacheRef.current.incidentDetails.set(incident.id, incident);
@@ -748,7 +763,7 @@ export function AppProvider({ children }) {
             dispatch({ type: 'incidents/loaded', payload: merged });
             return merged;
           } catch (fallbackError) {
-            console.warn('Fallback incidents failed', fallbackError);
+            // Fallback failed
           }
         }
         return [];
@@ -782,7 +797,7 @@ export function AppProvider({ children }) {
             dispatch({ type: 'incident/loaded', payload: fallback });
             return fallback;
           } catch (fallbackError) {
-            console.warn('Fallback incident detail failed', fallbackError);
+            // Fallback failed
           }
         }
         return null;
@@ -815,7 +830,7 @@ export function AppProvider({ children }) {
             dispatch({ type: 'incident/updated', payload: { incident: fallback } });
             return fallback;
           } catch (fallbackError) {
-            console.warn('Fallback incident action failed', fallbackError);
+            // Fallback failed
           }
         }
         throw error;
@@ -855,7 +870,7 @@ export function AppProvider({ children }) {
               ...meetingDetails
             };
           } catch (detailsError) {
-            console.log('No existing meeting found, will create new one');
+            // No existing meeting found
           }
         }
 
@@ -869,7 +884,7 @@ export function AppProvider({ children }) {
           try {
             fullDetails = await getMeetingDetails(meetingId, state.settings.apiBaseUrl);
           } catch (detailsError) {
-            console.warn('Could not fetch full meeting details:', detailsError);
+            // Could not fetch full details
             // Continuar con los datos básicos si falla
           }
           
@@ -879,6 +894,14 @@ export function AppProvider({ children }) {
             incidentId: id,
             ...fullDetails
           };
+          
+          // Recargar el incidente para obtener el warRoomId actualizado
+          try {
+            const updatedIncident = await getIncidentById(id, state.settings.apiBaseUrl);
+            dispatch({ type: 'incident/loaded', payload: updatedIncident });
+          } catch (reloadError) {
+            // Could not reload incident
+          }
         }
 
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
@@ -957,11 +980,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
       } catch (error) {
-        addToast({
-          title: 'No se pudo unir a la reunión',
-          description: error.message || 'Verifica el código de la reunión.',
-          tone: 'danger',
-        });
+        // Error handling - let the calling component show the toast
         throw error;
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
@@ -1068,10 +1087,22 @@ export function AppProvider({ children }) {
           let user = outcome.user ?? null;
           if (!user) {
             try {
-              user = await authFetchMeApi(state.settings.apiBaseUrl);
+              const meResponse = await authFetchMeApi(state.settings.apiBaseUrl);
+              // Merge /api/auth/me with Google JWT claims to get complete user info
+              user = {
+                ...meResponse,
+                name: outcome.claims?.name || meResponse.email?.split('@')[0],
+                email: meResponse.email || outcome.email,
+                picture: outcome.claims?.picture,
+              };
             } catch (e) {
-              // ignore; we'll still store minimal info if available
-              user = outcome.user ?? { email: outcome.email, role: outcome.role };
+              // Fallback: build user from Google JWT claims
+              user = outcome.user ?? {
+                email: outcome.email || outcome.claims?.email,
+                name: outcome.claims?.name || outcome.email?.split('@')[0],
+                picture: outcome.claims?.picture,
+                role: outcome.role || 'ROLE_USER',
+              };
             }
           }
 
@@ -1160,7 +1191,7 @@ export function AppProvider({ children }) {
       try {
         await authLogoutApi(state.settings.apiBaseUrl);
       } catch (error) {
-        console.warn('Fallo al cerrar sesión en backend. Se limpiará el estado local.', error);
+        // Error handling silently
       } finally {
         clearAuthState();
         setAuthToken(null);
@@ -1302,11 +1333,15 @@ export function AppProvider({ children }) {
             linkPacketToIncident(packetId, fallback.incidentId, severity);
             return fallback;
           } catch (fallbackError) {
-            console.warn('Fallback incident from packet failed', fallbackError);
+            // Fallback failed silently
           }
         }
         throw error;
       }
+    };
+
+    const clearSelectedIncident = () => {
+      dispatch({ type: 'incident/cleared' });
     };
 
     return {
@@ -1314,6 +1349,7 @@ export function AppProvider({ children }) {
       dismissToast,
       loadIncidents,
       loadIncidentById,
+      clearSelectedIncident,
       updateIncidentStatus,
       openWarRoom,
       joinWarRoom,

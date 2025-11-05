@@ -64,7 +64,7 @@ export async function authStartGoogle(baseUrl) {
     throw new Error('Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID in .env file and restart the dev server.');
   }
 
-  initGoogle(clientId);
+  await initGoogle(clientId);
   const idToken = await requestIdToken({ timeoutMs: 60000 });
 
   const url = toUrl(baseUrl, '/api/auth/google');
@@ -102,10 +102,7 @@ export async function getIncidents(filters = {}, baseUrl) {
     const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
     const alertsUrl = toUrl(url, '/api/alerts', { limit });
     
-    console.log('📡 Fetching alerts from:', alertsUrl.toString());
     const alerts = await request(alertsUrl, { method: 'GET' });
-    
-    console.log('✅ Fetched alerts:', alerts?.length || 0);
     
     // Convert alerts to incident format
     if (!Array.isArray(alerts)) return [];
@@ -125,14 +122,36 @@ export async function getIncidents(filters = {}, baseUrl) {
       warRoomId: alert.warRoomId,  // Include warRoomId from backend
     }));
   } catch (error) {
-    console.error('❌ Failed to fetch alerts:', error);
     throw error;
   }
 }
 
 export async function getIncidentById(id, baseUrl) {
-  const url = toUrl(baseUrl, `/incidents/${id}`);
-  return request(url, { method: 'GET' });
+  if (!id || id === 'undefined') {
+    return null;
+  }
+  
+  const url = toUrl(baseUrl, `/api/alerts/by-incident/${id}`);
+  const alert = await request(url, { method: 'GET' });
+  
+  // Map alert to incident format, ensuring warRoomId is included
+  if (!alert) return null;
+  
+  return {
+    id: alert.incidentId || `alert-${alert.id}`,
+    source: alert.packetId,
+    severity: alert.severity,
+    createdAt: alert.timestamp,
+    detection: {
+      model_version: alert.modelVersion || alert.model_version,
+      model_score: alert.score,
+    },
+    status: 'no-conocido',
+    type: 'alert',
+    linkedPacketId: alert.packetId,
+    _alertId: alert.id,
+    warRoomId: alert.warRoomId,  // Include warRoomId from backend
+  };
 }
 
 export async function postIncidentAction(id, body, baseUrl) {
@@ -263,7 +282,6 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
-    console.log('🔌 Building WebSocket URL:', target);
     return target;
   };
 
@@ -271,10 +289,8 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
     if (closedExplicitly) return;
     try {
       const wsUrl = buildWsUrl();
-      console.log('🔗 Connecting to WebSocket:', wsUrl);
       currentSocket = new WebSocket(wsUrl);
     } catch (error) {
-      console.error('❌ Error creating WebSocket:', error);
       onError?.(error);
       scheduleReconnect();
       return;
@@ -286,18 +302,16 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
         const payload = JSON.parse(event.data);
         if (payload?.type) onEvent?.(payload.type, payload);
       } catch (error) {
-        console.warn('Traffic stream parse error', error);
+        // Parse error
       }
     });
 
     currentSocket.addEventListener('close', () => {
-      console.log('⚠️ WebSocket closed');
       onClose?.();
       if (!closedExplicitly) scheduleReconnect();
     });
 
     currentSocket.addEventListener('error', (event) => {
-      console.error('❌ WebSocket error:', event);
       onError?.(event);
       if (!closedExplicitly) currentSocket?.close();
     });

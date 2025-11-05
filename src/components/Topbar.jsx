@@ -54,7 +54,6 @@ const Topbar = memo(function Topbar({
             )}
             <div className="user-meta">
               <strong>{user.name || user.email}</strong>
-              {user.email ? <span>{user.email}</span> : null}
             </div>
             <button
               type="button"
