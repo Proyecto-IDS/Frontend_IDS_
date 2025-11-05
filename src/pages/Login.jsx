@@ -30,15 +30,18 @@ function Login({ params = {} }) {
 
   useEffect(() => {
     if (auth.user) return;
+    // Solo validar sesión si hay parámetros de OAuth o si hay un token almacenado
     const hasDoneParam =
       searchParams.has('done') || searchParams.has('mfa') || searchParams.has('code');
-    if (!hasValidatedRef.current || hasDoneParam) {
+    const hasStoredToken = auth.token;
+    
+    if ((!hasValidatedRef.current || hasDoneParam) && (hasDoneParam || hasStoredToken)) {
       hasValidatedRef.current = true;
       authHandleReturn().catch((error) => {
         setLocalError(error?.message || 'No se pudo validar la sesión. Intenta nuevamente.');
       });
     }
-  }, [auth.user, authHandleReturn, searchParams]);
+  }, [auth.user, auth.token, authHandleReturn, searchParams]);
 
   const handleGoogle = async () => {
     setLocalError('');

@@ -27,13 +27,23 @@ const severityTone = {
 function IncidentDetail({ params }) {
   const { id } = params;
   const { selectedIncident, loading, auth } = useAppState();
-  const { loadIncidentById, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
+  const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
   useEffect(() => {
-    loadIncidentById(id);
-  }, [id, loadIncidentById]);
+    if (id) {
+      loadIncidentById(id);
+    }
+    
+    // Cleanup when component unmounts
+    return () => {
+      if (id) {
+        clearSelectedIncident();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const incident = useMemo(() => {
     if (selectedIncident && selectedIncident.id === id) {
@@ -45,21 +55,15 @@ function IncidentDetail({ params }) {
   const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
 
   const handleOpenWarRoom = async () => {
-    console.log('🚨 handleOpenWarRoom llamado con incidentId:', id);
     try {
-      console.log('🚨 Llamando a openWarRoom...');
       const warRoom = await openWarRoom(id);
-      console.log('🚨 War Room creado:', warRoom);
       const warRoomId = warRoom?.id || warRoom?.warRoomId;
       if (warRoomId) {
         const hash = getRouteHash('war-room', { id: warRoomId });
-        console.log('🚨 Navegando a:', hash);
         navigate(hash);
-      } else {
-        console.error('🚨 War Room sin ID:', warRoom);
       }
     } catch (error) {
-      console.error('🚨 Error en handleOpenWarRoom:', error);
+      // Error handling
     }
   };
 
@@ -96,10 +100,6 @@ function IncidentDetail({ params }) {
     );
   }
 
-  // Debug: ver el status exacto
-  console.log('🔍 Incident status:', JSON.stringify(incident.status), 'Type:', typeof incident.status);
-  console.log('🔍 Is no-conocido?', incident.status === 'no-conocido');
-
   return (
     <div className="page incident-page">
       <header className="page-header">
@@ -122,25 +122,37 @@ function IncidentDetail({ params }) {
           )}
           {incident.status === 'no-conocido' && (
             <>
-              {console.log('✅ Renderizando botón War Room', { isAdmin, warRoomId: incident.warRoomId })}
               {isAdmin ? (
-                <button 
-                  type="button" 
-                  className="btn warn" 
-                  onClick={() => {
-                    console.log('🚨 Click en War Room button (ADMIN)');
-                    handleOpenWarRoom();
-                  }}
-                  style={{ display: 'block', visibility: 'visible' }}
-                >
-                  🚨 Generar reunión
-                </button>
+                incident.warRoomId ? (
+                  <button 
+                    type="button" 
+                    className="btn primary" 
+                    onClick={() => {
+                      // Admin ya tiene reunión, unirse a ella
+                      const hash = getRouteHash('war-room', { id: incident.warRoomId });
+                      navigate(hash);
+                    }}
+                    style={{ display: 'block', visibility: 'visible' }}
+                  >
+                    📋 Unirse a reunión
+                  </button>
+                ) : (
+                  <button 
+                    type="button" 
+                    className="btn warn" 
+                    onClick={() => {
+                      handleOpenWarRoom();
+                    }}
+                    style={{ display: 'block', visibility: 'visible' }}
+                  >
+                    🚨 Generar reunión
+                  </button>
+                )
               ) : incident.warRoomId ? (
                 <button 
                   type="button" 
                   className="btn primary" 
                   onClick={() => {
-                    console.log('🚨 Click en Join Meeting button (USER)', incident.warRoomId);
                     // Directamente navegar a la reunión
                     const hash = getRouteHash('war-room', { id: incident.warRoomId });
                     navigate(hash);
