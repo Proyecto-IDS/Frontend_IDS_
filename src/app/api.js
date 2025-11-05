@@ -8,6 +8,10 @@ export function setAuthToken(token) {
   authToken = token || null;
 }
 
+export function getAuthToken() {
+  return authToken;
+}
+
 const toUrl = (baseUrl, path, params) => {
   const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const url = new URL(path.replace(/^\//, ''), normalized);
@@ -198,6 +202,12 @@ export async function getWarRoomMessages(warRoomId, baseUrl) {
   // TODO: Implement meeting messages endpoint
   // For now, return empty array to avoid errors
   return [];
+}
+
+export async function leaveMeeting(meetingId, baseUrl) {
+  // Leave an existing meeting
+  const url = toUrl(baseUrl, `/api/meetings/${meetingId}/leave`);
+  return request(url, { method: 'POST' });
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {

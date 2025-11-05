@@ -467,26 +467,40 @@ export function AppProvider({ children }) {
     dispatch({ type: 'settings/loaded', payload: loadStoredSettings() });
   }, []);
 
-  // Connect to traffic stream WebSocket
+  // Store baseUrl and token in refs to avoid recreating WebSocket on every state change
+  const baseUrlRef = useRef(state.settings.apiBaseUrl);
+  const tokenRef = useRef(state.auth.token);
+  
   useEffect(() => {
-    const baseUrl = state.settings.apiBaseUrl;
-    const token = state.auth.token;
+    baseUrlRef.current = state.settings.apiBaseUrl;
+  }, [state.settings.apiBaseUrl]);
+  
+  useEffect(() => {
+    tokenRef.current = state.auth.token;
+  }, [state.auth.token]);
+
+  // Connect to traffic stream WebSocket (only once on mount, or when baseUrl/token change)
+  useEffect(() => {
+    const baseUrl = baseUrlRef.current;
+    const token = tokenRef.current;
     
     // Solo conectar si hay baseUrl Y token (usuario autenticado)
     if (!baseUrl || !token) {
-      console.log('⚠️ WebSocket skipped: baseUrl=' + !!baseUrl + ', token=' + !!token);
+      console.log('WebSocket skipped: baseUrl=' + !!baseUrl + ', token=' + !!token);
       return;
     }
+    
+    console.log('Setting up WebSocket connection...');
 
     const handleTrafficEvent = (type, payload) => {
-      console.log('📨 WebSocket event:', type, payload);
+      console.log('WebSocket event:', type, payload);
       
       if (type === 'alert' && payload?.alert) {
         const alert = payload.alert;
         const incidentId = alert.incidentId || `alert-${alert.id}`;
         const alertKey = `${incidentId}-${alert.timestamp}`;
         
-        console.log('🚨 Processing alert:', { incidentId, severity: alert.severity });
+        console.log('Processing alert:', { incidentId, severity: alert.severity });
         
         // Create or update incident from alert
         const incident = {
@@ -528,25 +542,93 @@ export function AppProvider({ children }) {
             tone: alert.severity === 'critica' || alert.severity === 'critical' || alert.severity === 'alta' || alert.severity === 'high' ? 'danger' : 'warn',
           });
         }
+      } else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
+        console.log('War room created event:', payload);
+        const incidentId = payload.incidentId;
+        const warRoom = payload.warRoom;
+
+        // Update incident to include warRoomId
+        dispatch({
+          type: 'incident/updated',
+          payload: {
+            incident: {
+              id: incidentId,
+              warRoomId: warRoom.id,
+            },
+          },
+        });
+
+        // Store war room in cache
+        cacheRef.current.warRooms.set(warRoom.id, warRoom);
+        dispatch({ type: 'warroom/loaded', payload: warRoom });
+
+        // Show notification
+        const actions = {
+          addToast: (options) => {
+            const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            dispatch({ type: 'toast/added', payload: { id, ...options } });
+            window.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
+          },
+        };
+        
+        actions.addToast({
+          title: 'Reunión creada',
+          description: `Se creó una reunión para el incidente ${incidentId}. Código: ${warRoom.code}`,
+          tone: 'info',
+        });
+      } else if (type === 'warroom.participants' && payload?.warRoomId) {
+        console.log('Participants update:', payload);
+        const { warRoomId, currentParticipantCount, action, userEmail } = payload;
+        
+        // Get current warRoom from cache or state
+        const existing = cacheRef.current.warRooms.get(warRoomId);
+        if (existing) {
+          const updated = {
+            ...existing,
+            currentParticipantCount,
+          };
+          
+          // Update participant emails list
+          if (userEmail) {
+            let emails = Array.isArray(existing.participantEmails) 
+              ? [...existing.participantEmails] 
+              : [];
+            
+            if (action === 'joined' && !emails.includes(userEmail)) {
+              emails.push(userEmail);
+            } else if (action === 'left') {
+              emails = emails.filter(e => e !== userEmail);
+            }
+            
+            updated.participantEmails = emails;
+          }
+          
+          console.log('Updating warRoom:', updated);
+          cacheRef.current.warRooms.set(warRoomId, updated);
+          dispatch({ type: 'warroom/loaded', payload: updated });
+        } else {
+          console.warn('War room not found in cache:', warRoomId);
+        }
       }
     };
 
     socketRef.current = connectTrafficStream(baseUrl, handleTrafficEvent, {
       onOpen: () => {
-        console.log('✅ WebSocket conectado a:', baseUrl);
+        console.log('WebSocket conectado a:', baseUrl);
       },
       onClose: () => {
-        console.log('⚠️  WebSocket desconectado');
+        console.log('WebSocket desconectado');
       },
       onError: (error) => {
-        console.error('❌ Error en WebSocket:', error);
+        console.error('Error en WebSocket:', error);
       },
     });
 
     return () => {
+      console.log('🔌 Cleaning up WebSocket connection...');
       socketRef.current?.close();
     };
-  }, [state.settings.apiBaseUrl, state.auth.token]);
+  }, []);  // Empty dependency array - only run once on mount
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -883,6 +965,16 @@ export function AppProvider({ children }) {
         throw error;
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
+      }
+    };
+    
+    const leaveWarRoom = async (meetingId) => {
+      try {
+        const { leaveMeeting } = await import('./api.js');
+        await leaveMeeting(meetingId, state.settings.apiBaseUrl);
+      } catch (error) {
+        console.warn('Failed to leave meeting:', error);
+        // Don't show toast for leave errors - user is navigating away anyway
       }
     };
 
@@ -1246,6 +1338,7 @@ export function AppProvider({ children }) {
       loadPacketDetail,
       requestRecentTraffic,
       createIncidentFromPacketAction,
+      leaveWarRoom,
     };
   }, [state.settings, state.traffic, state.incidents, state.auth]);
 
