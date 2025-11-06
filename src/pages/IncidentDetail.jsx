@@ -115,69 +115,75 @@ function IncidentDetail({ params }) {
           <button type="button" className="btn subtle" onClick={() => navigate(getRouteHash('dashboard'))}>
             Volver
           </button>
-          {incident.status === 'conocido' && (
-            <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
-              Ver solución aplicada
-            </button>
-          )}
-          {incident.status === 'no-conocido' && (
+          {/* Si el incidente está contenido, no mostrar ninguna acción adicional */}
+          {incident.status === 'contenido' ? (
+            // No mostrar botones adicionales para incidentes contenidos
+            null
+          ) : (
+            // Mostrar acciones normales solo si NO está contenido
             <>
-              {isAdmin ? (
-                incident.warRoomId ? (
-                  <button 
-                    type="button" 
-                    className="btn primary" 
-                    onClick={() => {
-                      // Admin ya tiene reunión, unirse a ella
-                      const hash = getRouteHash('war-room', { id: incident.warRoomId });
-                      navigate(hash);
-                    }}
-                    style={{ display: 'block', visibility: 'visible' }}
-                  >
-                    📋 Unirse a reunión
-                  </button>
-                ) : (
-                  <button 
-                    type="button" 
-                    className="btn warn" 
-                    onClick={() => {
-                      handleOpenWarRoom();
-                    }}
-                    style={{ display: 'block', visibility: 'visible' }}
-                  >
-                    🚨 Generar reunión
-                  </button>
-                )
-              ) : incident.warRoomId ? (
-                <button 
-                  type="button" 
-                  className="btn primary" 
-                  onClick={() => {
-                    // Directamente navegar a la reunión
-                    const hash = getRouteHash('war-room', { id: incident.warRoomId });
-                    navigate(hash);
-                  }}
-                  style={{ display: 'block', visibility: 'visible' }}
-                >
-                  📋 Unirse a reunión
+              {incident.status === 'conocido' && (
+                <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
+                  Ver solución aplicada
                 </button>
-              ) : null}
+              )}
+              {incident.status === 'no-conocido' && (
+                <>
+                  {isAdmin ? (
+                    incident.warRoomId ? (
+                      <button 
+                        type="button" 
+                        className="btn primary" 
+                        onClick={() => {
+                          // Admin ya tiene reunión, unirse a ella
+                          const hash = getRouteHash('war-room', { id: incident.warRoomId });
+                          navigate(hash);
+                        }}
+                      >
+                        📋 Unirse a reunión
+                      </button>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="btn warn" 
+                        onClick={() => {
+                          handleOpenWarRoom();
+                        }}
+                      >
+                        🚨 Generar reunión
+                      </button>
+                    )
+                  ) : incident.warRoomId ? (
+                    <button 
+                      type="button" 
+                      className="btn primary" 
+                      onClick={() => {
+                        // Directamente navegar a la reunión
+                        const hash = getRouteHash('war-room', { id: incident.warRoomId });
+                        navigate(hash);
+                      }}
+                    >
+                      📋 Unirse a reunión
+                    </button>
+                  ) : null}
+                </>
+              )}
+              {incident.status === 'falso-positivo' && (
+                <>
+                  <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
+                    Cerrar como FP
+                  </button>
+                  <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
+                    Escalar a no-conocido
+                  </button>
+                </>
+              )}
+              {incident.status === 'conocido' && (
+                <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
+                  Registrar nota
+                </button>
+              )}
             </>
-          )}
-          {incident.status === 'falso-positivo' && (
-            <>
-              <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
-                Cerrar como FP
-              </button>
-              <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
-                Escalar a no-conocido
-              </button>
-            </>
-          )}
-          {(incident.status === 'conocido' || incident.status === 'contenido') && (
-            <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
-              Registrar nota
-            </button>
           )}
         </div>
       </header>
@@ -230,18 +236,25 @@ function IncidentDetail({ params }) {
 
       <section className="panel">
         <header>
-          <h3>Acciones disponibles</h3>
+          <h3>{incident.status === 'contenido' ? 'Incidente resuelto' : 'Acciones disponibles'}</h3>
         </header>
-        <ul className="actions-list">
-          {incident.status === 'conocido' && <li>Revisar los logs asociados y validar que el bloqueo siga vigente.</li>}
-          {incident.status === 'no-conocido' && (
-            <li>Documentar hallazgos y asignar responsables dentro de la mesa de trabajo.</li>
-          )}
-          {incident.status === 'falso-positivo' && (
-            <li>Confirmar con el equipo involucrado si el evento corresponde a una prueba controlada.</li>
-          )}
-          <li>Registrar notas relevantes para auditoría.</li>
-        </ul>
+        {incident.status === 'contenido' ? (
+          <div className="resolved-info">
+            <p>✅ Este incidente ha sido marcado como contenido y la reunión ha finalizado.</p>
+            <p>No se requieren acciones adicionales. El incidente se considera completamente resuelto.</p>
+          </div>
+        ) : (
+          <ul className="actions-list">
+            {incident.status === 'conocido' && <li>Revisar los logs asociados y validar que el bloqueo siga vigente.</li>}
+            {incident.status === 'no-conocido' && (
+              <li>Documentar hallazgos y asignar responsables dentro de la mesa de trabajo.</li>
+            )}
+            {incident.status === 'falso-positivo' && (
+              <li>Confirmar con el equipo involucrado si el evento corresponde a una prueba controlada.</li>
+            )}
+            <li>Registrar notas relevantes para auditoría.</li>
+          </ul>
+        )}
       </section>
 
       <Modal
