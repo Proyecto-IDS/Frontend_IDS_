@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
+import { connectAlertsWebSocket } from '../app/api.js';
 import StatCard from '../components/StatCard.jsx';
 import Table from '../components/Table.jsx';
 import Tag from '../components/Tag.jsx';
@@ -27,6 +28,7 @@ const meetingOptions = [
   { value: '', label: 'Todas' },
   { value: 'inactive', label: 'Sin reunión' },
   { value: 'active', label: 'Con reunión activa' },
+  { value: 'resolved', label: 'Incidentes contenidos' },
 ];
 
 const statusTone = {
@@ -65,7 +67,7 @@ const normalizeSeverity = (severity) => {
 
 function Dashboard() {
   const { incidents, loading, traffic, settings, auth } = useAppState();
-  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket, openWarRoom } = useAppActions();
+  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket, openWarRoom, loadResolvedIncidents } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
     status: '',
@@ -94,18 +96,23 @@ function Dashboard() {
     
     setIncidentsPage(1); // Reset to first page when filters change
     const timeoutId = window.setTimeout(() => {
-      // Convert Spanish severity to English for backend
-      const backendFilters = {
-        ...filters,
-        severity: filters.severity ? (
-          filters.severity === 'critica' ? 'critical' :
-          filters.severity === 'alta' ? 'high' :
-          filters.severity === 'media' ? 'medium' :
-          filters.severity === 'baja' ? 'low' :
-          filters.severity
-        ) : '',
-      };
-      loadIncidents(backendFilters);
+      if (filters.meeting === 'resolved') {
+        // Load resolved incidents from the special endpoint
+        loadResolvedIncidents();
+      } else {
+        // Convert Spanish severity to English for backend
+        const backendFilters = {
+          ...filters,
+          severity: filters.severity ? (
+            filters.severity === 'critica' ? 'critical' :
+            filters.severity === 'alta' ? 'high' :
+            filters.severity === 'media' ? 'medium' :
+            filters.severity === 'baja' ? 'low' :
+            filters.severity
+          ) : '',
+        };
+        loadIncidents(backendFilters);
+      }
     }, 250);
     return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +144,45 @@ function Dashboard() {
     setAlerts(criticalIncidents);
     setAlertsPage(1); // Reset to first page when alerts change
   }, [incidents]);
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    if (!auth?.token || !settings.apiBaseUrl) return;
+    
+    const handleWebSocketEvent = (eventType, payload) => {
+      // Handle warroom resolved events
+      if (eventType === 'warroom.resolved') {
+        // Reload incidents to reflect the resolved status change
+        if (filters.meeting === 'resolved') {
+          loadResolvedIncidents();
+        } else {
+          loadIncidents({});
+        }
+      }
+      
+      // Handle warroom created events (new meeting started)
+      if (eventType === 'warroom.created') {
+        // Reload incidents to reflect the new meeting status
+        loadIncidents({});
+      }
+      
+      // Handle new alerts
+      if (eventType === 'alert') {
+        // The alert is already handled by state.js, but we can reload to be sure
+        loadIncidents({});
+      }
+    };
+
+    const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
+      onOpen: () => {},
+      onClose: () => {},
+      onError: () => {},
+    });
+
+    return () => {
+      socket.close();
+    };
+  }, [auth?.token, settings.apiBaseUrl, filters.meeting, loadIncidents, loadResolvedIncidents]);
 
   const metrics = useMemo(() => {
     // Calcular métricas directamente desde los incidents
@@ -218,6 +264,11 @@ function Dashboard() {
         key: 'actions',
         label: 'Acciones',
         render: (_, row) => {
+          // Si el incidente está contenido, no tiene acciones
+          if (row.status === 'contenido') {
+            return '—';
+          }
+          
           // Si ya existe warRoomId, cualquiera puede unirse
           if (row.warRoomId) {
             return (
@@ -240,7 +291,7 @@ function Dashboard() {
             return (
               <button
                 type="button"
-                className="btn-link"
+              className="btn-link"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOpenWarRoom(row.id);
@@ -275,6 +326,11 @@ function Dashboard() {
       });
     }
 
+    // Exclude resolved incidents from all sections except "resolved"
+    if (filters.meeting !== 'resolved') {
+      filtered = filtered.filter((incident) => incident.status !== 'contenido');
+    }
+
     // Filter by status
     if (filters.status) {
       filtered = filtered.filter((incident) => incident.status === filters.status);
@@ -296,6 +352,9 @@ function Dashboard() {
       } else if (filters.meeting === 'inactive') {
         // Sin reunión: no tiene warRoomId
         filtered = filtered.filter((incident) => !incident.warRoomId);
+      } else if (filters.meeting === 'resolved') {
+        // Incidentes contenidos: status es "contenido"
+        filtered = filtered.filter((incident) => incident.status === 'contenido');
       }
     }
 
