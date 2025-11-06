@@ -16,11 +16,12 @@ import {
   postWarRoomMessage as apiPostWarRoomMessage,
   getTrafficRecent,
   getTrafficPacketById,
-  connectTrafficStream,
+  connectAlertsWebSocket,
   getAlertsCount,
   getAlertsBySeverity,
   getAlertsToday,
   getAlertsTodayCount,
+  markIncidentAsResolved,
   setAuthToken,
 } from './api.js';
 
@@ -510,7 +511,7 @@ export function AppProvider({ children }) {
     tokenRef.current = state.auth.token;
   }, [state.auth.token]);
 
-  // Connect to traffic stream WebSocket (only once on mount, or when baseUrl/token change)
+  // Connect to alerts WebSocket for real-time alerts and meeting events
   useEffect(() => {
     const baseUrl = baseUrlRef.current;
     const token = tokenRef.current;
@@ -519,15 +520,13 @@ export function AppProvider({ children }) {
     if (!baseUrl || !token) {
       return;
     }
-    
 
-    const handleTrafficEvent = (type, payload) => {
-      
+    const handleAlertEvent = (type, payload) => {
+      // Handle new alerts
       if (type === 'alert' && payload?.alert) {
         const alert = payload.alert;
         const incidentId = alert.incidentId || `alert-${alert.id}`;
         const alertKey = `${incidentId}-${alert.timestamp}`;
-        
         
         // Create or update incident from alert
         const incident = {
@@ -545,13 +544,13 @@ export function AppProvider({ children }) {
           linkedPacketId: alert.packetId,
         };
         
-        // Use new action to append or update without losing previous alerts
+        // Add or update incident
         dispatch({
           type: 'incidents/append-or-update',
           payload: { incident },
         });
 
-        // Show toast notification SOLO si no ha sido notificado antes
+        // Show toast notification only if not already notified
         if (!cacheRef.current.notifiedAlertIds.has(alertKey)) {
           cacheRef.current.notifiedAlertIds.add(alertKey);
           
@@ -564,12 +563,15 @@ export function AppProvider({ children }) {
           };
           
           actions.addToast({
-            title: 'Alerta de incidente',
+            title: 'Nueva alerta',
             description: `Severidad ${alert.severity || 'media'} detectada en paquete ${alert.packetId}`,
             tone: alert.severity === 'critica' || alert.severity === 'critical' || alert.severity === 'alta' || alert.severity === 'high' ? 'danger' : 'warn',
           });
         }
-      } else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
+      }
+      
+      // Handle meeting created events
+      else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
         const incidentId = payload.incidentId;
         const warRoom = payload.warRoom;
 
@@ -602,7 +604,42 @@ export function AppProvider({ children }) {
           description: `Se creó una reunión para el incidente ${incidentId}. Código: ${warRoom.code}`,
           tone: 'info',
         });
-      } else if (type === 'warroom.participants' && payload?.warRoomId) {
+      }
+      
+      // Handle meeting resolved events  
+      else if (type === 'warroom.resolved' && payload?.warRoomId) {
+        // Force reload incidents to show resolved status immediately
+        const actions = {
+          loadIncidents: async () => {
+            try {
+              const incidents = await getIncidents({}, baseUrl);
+              dispatch({ type: 'incidents/loaded', payload: incidents });
+            } catch (error) {
+              // Error loading incidents
+            }
+          },
+          // Also update selected incident if it matches the resolved one
+          updateSelectedIncident: () => {
+            const currentSelected = state.selectedIncident;
+            if (currentSelected && currentSelected.warRoomId === payload.warRoomId) {
+              // Update the selected incident status to 'contenido'
+              dispatch({ 
+                type: 'incident/selected', 
+                payload: {
+                  ...currentSelected,
+                  status: 'contenido',
+                  updatedAt: new Date().toISOString()
+                }
+              });
+            }
+          },
+        };
+        actions.loadIncidents();
+        actions.updateSelectedIncident();
+      }
+      
+      // Handle meeting participants events
+      else if (type === 'warroom.participants' && payload?.warRoomId) {
         const { warRoomId, currentParticipantCount, action, userEmail } = payload;
         
         // Get current warRoom from cache or state
@@ -634,22 +671,22 @@ export function AppProvider({ children }) {
       }
     };
 
-    socketRef.current = connectTrafficStream(baseUrl, handleTrafficEvent, {
+    socketRef.current = connectAlertsWebSocket(baseUrl, handleAlertEvent, {
       onOpen: () => {
-        // Connected
+        // Connected to alerts WebSocket
       },
       onClose: () => {
-        // Disconnected
+        // Disconnected from alerts WebSocket
       },
       onError: (error) => {
-        // Error
+        // Error connecting to alerts WebSocket
       },
     });
 
     return () => {
       socketRef.current?.close();
     };
-  }, []);  // Empty dependency array - only run once on mount
+  }, []); // Empty dependency array - only run once on mount
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -808,14 +845,44 @@ export function AppProvider({ children }) {
 
     const updateIncidentStatus = async (id, actionKey) => {
       try {
-        const incident = await postIncidentAction(id, { action: actionKey }, state.settings.apiBaseUrl);
+        let incident = null;
+        
+        // Handle special case for marking as resolved
+        if (actionKey === 'mark_contained') {
+          // Verificar que el usuario sea administrador
+          const isAdmin = state.auth?.user?.role?.includes('ADMIN') || state.auth?.user?.roles?.includes('ADMIN');
+          if (!isAdmin) {
+            throw new Error('Solo los administradores pueden marcar incidentes como contenidos');
+          }
+          
+          // Get the current incident to find the warRoomId (meetingId)
+          const currentIncident = await getIncidentById(id, state.settings.apiBaseUrl);
+          if (!currentIncident || !currentIncident.warRoomId) {
+            throw new Error('No se encontró la reunión asociada al incidente');
+          }
+          
+          // Mark the meeting as resolved
+          await markIncidentAsResolved(currentIncident.warRoomId, state.settings.apiBaseUrl);
+          
+          // Update the incident status locally
+          incident = { ...currentIncident, status: 'contenido' };
+          
+          addToast({
+            title: 'Incidente contenido',
+            description: `El incidente ${id} ha sido marcado como resuelto.`,
+            tone: 'success',
+          });
+        } else {
+          incident = await postIncidentAction(id, { action: actionKey }, state.settings.apiBaseUrl);
+          addToast({
+            title: 'Estado actualizado',
+            description: `El incidente ${id} ha sido actualizado.`,
+            tone: 'success',
+          });
+        }
+        
         cacheRef.current.incidentDetails.set(id, incident);
         dispatch({ type: 'incident/updated', payload: { incident } });
-        addToast({
-          title: 'Estado actualizado',
-          description: `El incidente ${id} ha sido actualizado.`,
-          tone: 'success',
-        });
         return incident;
       } catch (error) {
         addToast({
@@ -1344,6 +1411,25 @@ export function AppProvider({ children }) {
       dispatch({ type: 'incident/cleared' });
     };
 
+    const loadResolvedIncidents = async () => {
+      dispatch({ type: 'incidents/loading', payload: true });
+      try {
+        const { getResolvedIncidents } = await import('./api.js');
+        const resolvedIncidents = await getResolvedIncidents(state.settings.apiBaseUrl);
+        dispatch({ type: 'incidents/loaded', payload: resolvedIncidents });
+        return resolvedIncidents;
+      } catch (error) {
+        addToast({
+          title: 'Error al cargar incidentes contenidos',
+          description: error.message || 'Intenta nuevamente más tarde.',
+          tone: 'danger',
+        });
+        return [];
+      } finally {
+        dispatch({ type: 'incidents/loading', payload: false });
+      }
+    };
+
     return {
       addToast,
       dismissToast,
@@ -1375,6 +1461,7 @@ export function AppProvider({ children }) {
       requestRecentTraffic,
       createIncidentFromPacketAction,
       leaveWarRoom,
+      loadResolvedIncidents,
     };
   }, [state.settings, state.traffic, state.incidents, state.auth]);
 
