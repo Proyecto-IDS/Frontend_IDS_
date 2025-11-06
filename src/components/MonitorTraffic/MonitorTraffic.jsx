@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppActions, useAppState } from '../../app/state.js';
-import { connectTrafficStream } from '../../app/api.js';
+// Traffic stream WebSocket removed - using polling only
 import { getRouteHash, navigate } from '../../app/router.js';
 import Modal from '../Modal.jsx';
 import Loader from '../Loader.jsx';
@@ -211,7 +211,6 @@ function MonitorTrafficLive() {
   }, []);
 
   useEffect(() => {
-    console.log('[MonitorTraffic] Conectando en modo:', traffic.mode);
     setConnectionStatus('conectando');
     destroyConnections();
 
@@ -229,31 +228,10 @@ function MonitorTrafficLive() {
       }
     };
 
-    if (traffic.mode === 'ws') {
-      console.log('[MonitorTraffic] Iniciando WebSocket a:', settings.apiBaseUrl);
-      setIsStreaming(true);
-      socketRef.current = connectTrafficStream(settings.apiBaseUrl, handleStreamEvent, {
-        onOpen: () => {
-          console.log('[MonitorTraffic] WebSocket CONECTADO');
-          setConnectionStatus('en tiempo real');
-        },
-        onClose: () => {
-          console.log('[MonitorTraffic] WebSocket CERRADO');
-          setConnectionStatus('desconectado');
-          setIsStreaming(false);
-        },
-        onError: () => {
-          console.log('[MonitorTraffic] WebSocket ERROR');
-          setConnectionStatus('error');
-          setIsStreaming(false);
-        },
-      });
-      // No hacer polling en modo WebSocket - los datos llegan por el stream
-    } else {
-      setConnectionStatus('polling');
-      tick();
-      pollTimerRef.current = setInterval(tick, traffic.pollingInterval);
-    }
+    // Always use polling mode (WebSocket removed)
+    setConnectionStatus('polling');
+    tick();
+    pollTimerRef.current = setInterval(tick, traffic.pollingInterval);
 
     return destroyConnections;
     // eslint-disable-next-line react-hooks/exhaustive-deps
