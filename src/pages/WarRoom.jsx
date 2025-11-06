@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
+import { connectAlertsWebSocket } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
@@ -14,7 +15,7 @@ const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 100
 
 function WarRoom({ params }) {
   const warRoomId = params.id;
-  const { warRooms, loading, auth } = useAppState();
+  const { warRooms, loading, auth, settings } = useAppState();
   const {
     openWarRoom,
     loadWarRoomMessages,
@@ -46,6 +47,7 @@ function WarRoom({ params }) {
   // Track if we've joined this meeting
   const hasJoinedRef = useRef(false);
   const meetingIdRef = useRef(null);
+  const joinedTimeRef = useRef(null);
 
   // Auto-join meeting when entering the room if user is not a participant
   useEffect(() => {
@@ -61,6 +63,7 @@ function WarRoom({ params }) {
         .then(() => {
           hasJoinedRef.current = true;
           meetingIdRef.current = warRoom.id;
+          joinedTimeRef.current = Date.now();
         })
         .catch(error => {
           addToast({
@@ -73,19 +76,70 @@ function WarRoom({ params }) {
       // We're already a participant (maybe we created the meeting)
       hasJoinedRef.current = true;
       meetingIdRef.current = warRoom.id;
+      joinedTimeRef.current = Date.now();
     }
   }, [warRoom?.id, warRoom?.code, warRoom?.participantEmails, auth.user?.email, joinWarRoom]);
 
   // Cleanup: leave meeting when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
-      if (hasJoinedRef.current && meetingIdRef.current) {
+      // Only leave if we've been in the room for at least 5 seconds to avoid false dismounts
+      const now = Date.now();
+      const joinedTime = hasJoinedRef.current ? (joinedTimeRef.current || now) : now;
+      const timeInRoom = now - joinedTime;
+      
+      if (hasJoinedRef.current && meetingIdRef.current && timeInRoom > 5000) {
+        console.log('WarRoom: Leaving meeting after', timeInRoom, 'ms in room');
         leaveWarRoom(meetingIdRef.current);
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
+        joinedTimeRef.current = null;
+      } else if (hasJoinedRef.current) {
+        console.log('WarRoom: NOT leaving meeting, only', timeInRoom, 'ms in room (too quick)');
       }
     };
   }, [leaveWarRoom]);
+
+  // WebSocket connection for real-time participant updates
+  useEffect(() => {
+    if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
+    
+    const handleWebSocketEvent = (eventType, payload) => {
+      // Handle warroom participant updates
+      if (eventType === 'warroom.participants' && payload.warRoomId === warRoomId) {
+        // Refresh the war room data to get updated participant list
+        openWarRoom(incidentId);
+      }
+      
+      // Handle warroom resolution events
+      if (eventType === 'warroom.resolved' && payload.warRoomId === warRoomId) {
+        // Refresh the war room data to reflect the resolved status
+        openWarRoom(incidentId);
+      }
+      
+      // Handle new messages (if implemented in backend)
+      if (eventType === 'warroom.message' && payload.warRoomId === warRoomId) {
+        // Refresh messages
+        loadWarRoomMessages(warRoomId);
+      }
+    };
+
+    const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
+      onOpen: () => {
+        console.log('WarRoom: WebSocket connected for real-time updates');
+      },
+      onClose: () => {
+        console.log('WarRoom: WebSocket disconnected');
+      },
+      onError: (error) => {
+        console.warn('WarRoom: WebSocket error:', error);
+      },
+    });
+
+    return () => {
+      socket.close();
+    };
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, loadWarRoomMessages]);
 
   useEffect(() => {
     if (!warRoomId) return;
@@ -119,9 +173,27 @@ function WarRoom({ params }) {
 
   const handleMarkContained = async () => {
     if (!incidentId) return;
-    await updateIncidentStatus(incidentId, 'mark_contained');
-    setConfirmContain(false);
-    navigate(getRouteHash('incident', { id: incidentId }));
+    
+    // Verificar que el usuario sea administrador
+    const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
+    if (!isAdmin) {
+      addToast({
+        title: 'Acceso denegado',
+        description: 'Solo los administradores pueden marcar incidentes como contenidos.',
+        tone: 'danger',
+      });
+      setConfirmContain(false);
+      return;
+    }
+    
+    try {
+      await updateIncidentStatus(incidentId, 'mark_contained');
+      setConfirmContain(false);
+      navigate(getRouteHash('incident', { id: incidentId }));
+    } catch (error) {
+      // El error ya es manejado por updateIncidentStatus, solo cerramos el modal
+      setConfirmContain(false);
+    }
   };
 
   if (loading.warRoom && !warRoom) {
@@ -189,9 +261,12 @@ function WarRoom({ params }) {
           >
             Volver al detalle
           </button>
-          <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
-            Marcar como contenido
-          </button>
+          {/* Solo mostrar el botón si el usuario es administrador */}
+          {(auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN')) && (
+            <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
+              Marcar como contenido
+            </button>
+          )}
         </div>
       </header>
 
