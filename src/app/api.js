@@ -272,15 +272,45 @@ export async function getAlertsTodayCount(baseUrl) {
   return request(url, { method: 'GET' });
 }
 
+export async function getResolvedIncidents(baseUrl) {
+  const url = toUrl(baseUrl, '/api/alerts/resolved');
+  const alerts = await request(url, { method: 'GET' });
+  
+  // Convert alerts to incident format
+  if (!Array.isArray(alerts)) return [];
+  return alerts.map((alert) => ({
+    id: alert.incidentId || `alert-${alert.id}`,
+    source: alert.packetId,
+    severity: alert.severity,
+    createdAt: alert.timestamp,
+    detection: {
+      model_version: alert.modelVersion || alert.model_version,
+      model_score: alert.score,
+    },
+    status: 'contenido',  // Status for resolved incidents
+    type: 'alert',
+    linkedPacketId: alert.packetId,
+    _alertId: alert.id,
+    warRoomId: alert.warRoomId,
+  }));
+}
+
+export async function markIncidentAsResolved(meetingId, baseUrl) {
+  const url = toUrl(baseUrl, `/api/meetings/${meetingId}/mark-as-resolved`);
+  return request(url, { method: 'POST' });
+}
+
 // --- WebSocket ------------------------------------------------------------
 
-export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+// WebSocket connection for alerts and meeting events
+export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
   let closedExplicitly = false;
   let currentSocket = null;
   let retryTimer = null;
 
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    // Use the existing WebSocket endpoint that's already implemented in backend
     let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
     return target;
   };
@@ -302,7 +332,7 @@ export function connectTrafficStream(baseUrl, onEvent, { onOpen, onClose, onErro
         const payload = JSON.parse(event.data);
         if (payload?.type) onEvent?.(payload.type, payload);
       } catch (error) {
-        // Parse error
+        // Parse error - ignore
       }
     });
 
@@ -353,11 +383,13 @@ export const api = {
   postWarRoomMessage,
   getTrafficRecent, 
   getTrafficPacketById,
-  connectTrafficStream,
+  connectAlertsWebSocket,
   getAlertsCount,
   getAlertsBySeverity,
   getAlertsToday,
   getAlertsTodayCount,
+  getResolvedIncidents,
+  markIncidentAsResolved,
 };
 
 export default api;
