@@ -134,23 +134,33 @@ export async function getIncidentById(id, baseUrl) {
   const url = toUrl(baseUrl, `/api/alerts/by-incident/${id}`);
   const alert = await request(url, { method: 'GET' });
   
-  // Map alert to incident format, ensuring warRoomId is included
+  // Map alert to incident format, ensuring all backend fields are included
   if (!alert) return null;
   
   return {
     id: alert.incidentId || `alert-${alert.id}`,
     source: alert.packetId,
     severity: alert.severity,
-    createdAt: alert.timestamp,
+    createdAt: alert.timestamp || alert.createdAt,
+    updatedAt: alert.updatedAt,
     detection: {
       model_version: alert.modelVersion || alert.model_version,
       model_score: alert.score,
     },
-    status: 'no-conocido',
-    type: 'alert',
+    status: alert.status || 'no-conocido',
+    type: alert.type || 'alert',
     linkedPacketId: alert.packetId,
     _alertId: alert.id,
-    warRoomId: alert.warRoomId,  // Include warRoomId from backend
+    warRoomId: alert.warRoomId,
+    // War room / meeting information
+    warRoomCode: alert.warRoomCode,
+    warRoomStartTime: alert.warRoomStartTime,
+    warRoomDuration: alert.warRoomDuration,
+    // Additional fields from backend
+    relatedAssets: alert.relatedAssets || [],
+    notes: alert.notes,
+    timeline: alert.timeline || [],
+    aiSummary: alert.aiSummary,
   };
 }
 
@@ -173,27 +183,15 @@ export async function postIncidentFromPacket(packetId, reason, severity, baseUrl
 }
 
 export async function postIncidentWarRoom(id, baseUrl) {
-  // Create a meeting instead of using non-existent war-room endpoint
+  // Create a meeting using the new simplified format (no dates needed)
   const url = toUrl(baseUrl, '/api/meetings');
-  
-  // Format: ISO_LOCAL_DATE_TIME (YYYY-MM-DDTHH:mm:ss - no Z, no milliseconds)
-  const formatLocalDateTime = (date) => {
-    const isoString = date.toISOString(); // 2025-11-03T21:27:38.575Z
-    return isoString.substring(0, 19); // Take only YYYY-MM-DDTHH:mm:ss
-  };
-  
-  const now = new Date();
-  const startTime = formatLocalDateTime(now);
-  const endTime = formatLocalDateTime(new Date(now.getTime() + 3600000)); // +1 hour
   
   return request(url, { 
     method: 'POST',
     headers: DEFAULT_HEADERS,
     body: JSON.stringify({
-      title: `Meeting for Incident ${id}`,
-      description: `Discussion and response coordination for incident ${id}`,
-      startTime,
-      endTime,
+      title: `Reunión para Incidente ${id}`,
+      description: `Coordinación y respuesta para incidente ${id}`,
       incidentId: id
     })
   });
