@@ -521,7 +521,7 @@ export function AppProvider({ children }) {
       return;
     }
 
-    const handleAlertEvent = (type, payload) => {
+    const handleAlertEvent = async (type, payload) => {
       // Handle new alerts
       if (type === 'alert' && payload?.alert) {
         const alert = payload.alert;
@@ -608,34 +608,72 @@ export function AppProvider({ children }) {
       
       // Handle meeting resolved events  
       else if (type === 'warroom.resolved' && payload?.warRoomId) {
-        // Force reload incidents to show resolved status immediately
-        const actions = {
-          loadIncidents: async () => {
-            try {
-              const incidents = await getIncidents({}, baseUrl);
-              dispatch({ type: 'incidents/loaded', payload: incidents });
-            } catch (error) {
-              // Error loading incidents
-            }
-          },
-          // Also update selected incident if it matches the resolved one
-          updateSelectedIncident: () => {
-            const currentSelected = state.selectedIncident;
-            if (currentSelected && currentSelected.warRoomId === payload.warRoomId) {
-              // Update the selected incident status to 'contenido'
+        console.log('WARROOM RESOLVED EVENT RECEIVED IN STATE:', type, payload);
+        // Find the incident associated with this warRoomId
+        let targetIncidentId = null;
+        
+        // Check if it's the currently selected incident
+        if (state.selectedIncident && state.selectedIncident.warRoomId === payload.warRoomId) {
+          targetIncidentId = state.selectedIncident.id;
+        } else {
+          // Find it in the incidents list
+          const matchingIncident = state.incidents.find(inc => inc.warRoomId === payload.warRoomId);
+          if (matchingIncident) {
+            targetIncidentId = matchingIncident.id;
+          }
+        }
+
+        console.log('Target incident found:', targetIncidentId, 'Current state:', {
+          selectedIncident: state.selectedIncident?.id,
+          incidentsCount: state.incidents?.length
+        });
+
+        if (targetIncidentId) {
+          try {
+            // Force clear cache for this incident to ensure fresh data
+            cacheRef.current.incidentDetails.delete(targetIncidentId);
+            
+            // Reload the complete incident data from backend to get updated meeting info
+            console.log('Reloading incident from backend:', targetIncidentId);
+            const updatedIncident = await getIncidentById(targetIncidentId, baseUrl);
+            console.log('Updated incident data:', updatedIncident);
+            
+            if (updatedIncident) {
+              // Update cache with fresh data
+              cacheRef.current.incidentDetails.set(targetIncidentId, updatedIncident);
+              
+              // Update in incidents list
               dispatch({ 
-                type: 'incident/selected', 
-                payload: {
-                  ...currentSelected,
-                  status: 'contenido',
-                  updatedAt: new Date().toISOString()
-                }
+                type: 'incident/updated',
+                payload: { incident: updatedIncident }
               });
+              
+              // Also update selected incident if it matches
+              if (state.selectedIncident && state.selectedIncident.id === targetIncidentId) {
+                dispatch({ 
+                  type: 'incident/selected', 
+                  payload: updatedIncident
+                });
+              }
+              
+              console.log('State updated with resolved incident data');
             }
-          },
-        };
-        actions.loadIncidents();
-        actions.updateSelectedIncident();
+          } catch (error) {
+            console.error('Error reloading incident after resolution:', error);
+          }
+        }
+        
+        // Also force reload all incidents to ensure consistency
+        try {
+          // Clear all incident cache to force fresh loading
+          cacheRef.current.incidentDetails.clear();
+          
+          const incidents = await getIncidents({}, baseUrl);
+          dispatch({ type: 'incidents/loaded', payload: incidents });
+          console.log('All incidents reloaded after meeting resolution');
+        } catch (error) {
+          console.error('Error reloading incidents list:', error);
+        }
       }
       
       // Handle meeting participants events
@@ -664,6 +702,23 @@ export function AppProvider({ children }) {
             
             updated.participantEmails = emails;
           }
+          
+          cacheRef.current.warRooms.set(warRoomId, updated);
+          dispatch({ type: 'warroom/loaded', payload: updated });
+        }
+      }
+      
+      // Handle meeting duration updates
+      else if (type === 'warroom.duration' && payload?.warRoomId) {
+        const { warRoomId, currentDurationSeconds } = payload;
+        
+        // Update warRoom in cache
+        const existing = cacheRef.current.warRooms.get(warRoomId);
+        if (existing) {
+          const updated = {
+            ...existing,
+            currentDurationSeconds,
+          };
           
           cacheRef.current.warRooms.set(warRoomId, updated);
           dispatch({ type: 'warroom/loaded', payload: updated });
@@ -864,8 +919,8 @@ export function AppProvider({ children }) {
           // Mark the meeting as resolved
           await markIncidentAsResolved(currentIncident.warRoomId, state.settings.apiBaseUrl);
           
-          // Update the incident status locally
-          incident = { ...currentIncident, status: 'contenido' };
+          // Reload the incident data from backend to get updated meeting information
+          incident = await getIncidentById(id, state.settings.apiBaseUrl);
           
           addToast({
             title: 'Incidente contenido',
