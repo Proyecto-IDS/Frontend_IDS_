@@ -24,6 +24,17 @@ const severityTone = {
   baja: 'success',
 };
 
+// Helper function to format duration from seconds to HH:MM:SS
+const formatDuration = (seconds) => {
+  if (!seconds || seconds === 0) return '00:00:00';
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
 function IncidentDetail({ params }) {
   const { id } = params;
   const { selectedIncident, loading, auth } = useAppState();
@@ -217,6 +228,41 @@ function IncidentDetail({ params }) {
             <dt>Notas</dt>
             <dd>{incident.notes || 'Agrega notas para el equipo de respuesta.'}</dd>
           </div>
+          {/* Información de reunión si existe warRoomId */}
+          {incident.warRoomId && (
+            <>
+              <div>
+                <dt>Código de reunión</dt>
+                <dd>{incident.warRoomCode || '—'}</dd>
+              </div>
+              <div>
+                <dt>Estado de reunión</dt>
+                <dd>
+                  {incident.status === 'contenido' ? (
+                    <Tag tone="success">Resuelta</Tag>
+                  ) : (
+                    <Tag tone="info">Activa</Tag>
+                  )}
+                </dd>
+              </div>
+              {incident.warRoomStartTime && (
+                <div>
+                  <dt>Fecha de inicio de reunión</dt>
+                  <dd>
+                    <time dateTime={incident.warRoomStartTime}>
+                      {new Date(incident.warRoomStartTime).toLocaleString()}
+                    </time>
+                  </dd>
+                </div>
+              )}
+              {incident.status === 'contenido' && incident.warRoomDuration && (
+                <div>
+                  <dt>Duración de reunión</dt>
+                  <dd>{formatDuration(incident.warRoomDuration)}</dd>
+                </div>
+              )}
+            </>
+          )}
         </dl>
       </section>
 
