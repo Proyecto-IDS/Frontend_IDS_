@@ -31,12 +31,91 @@ function WarRoom({ params }) {
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
   const [localChecklist, setLocalChecklist] = useState(warRoom?.checklist || []);
+  
+  // Estado para el cronómetro en tiempo real
+  const [currentDuration, setCurrentDuration] = useState(0);
 
   const incidentId = useMemo(() => {
     if (warRoom?.incidentId) return warRoom.incidentId;
     if (warRoomId?.startsWith('WR-')) return warRoomId.substring(3);
     return warRoomId;
   }, [warRoom, warRoomId]);
+
+  // Función para formatear duración en MM:SS
+  const formatDuration = (seconds) => {
+    if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
+    
+    const numSeconds = Number(seconds);
+    if (isNaN(numSeconds)) return '00:00:00';
+    
+    const hours = Math.floor(numSeconds / 3600);
+    const minutes = Math.floor((numSeconds % 3600) / 60);
+    const remainingSeconds = numSeconds % 60;
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Efecto para calcular la duración en tiempo real
+  useEffect(() => {
+    if (!warRoom?.startTime) {
+      setCurrentDuration(0);
+      return;
+    }
+    
+    if (warRoom?.status === 'RESOLVED' || warRoom?.status === 'ENDED') {
+      return;
+    }
+
+    const updateDuration = () => {
+      const startTime = new Date(warRoom.startTime);
+      const now = new Date();
+      const durationSeconds = Math.floor((now - startTime) / 1000);
+      
+      // Si la diferencia es negativa, significa que startTime está en el futuro
+      // En ese caso, la reunión aún no ha empezado, mostrar 0
+      if (durationSeconds < 0) {
+        setCurrentDuration(0);
+      } else {
+        setCurrentDuration(durationSeconds);
+      }
+    };
+
+    // Actualizar inmediatamente
+    updateDuration();
+    
+    // Siempre actualizar cada segundo para tener un cronómetro en tiempo real
+    const interval = setInterval(updateDuration, 1000);
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [warRoom?.startTime, warRoom?.status]);
+
+  // Efecto para redirigir cuando la reunión está terminada
+  useEffect(() => {
+    if (warRoom?.status === 'ENDED' || warRoom?.status === 'RESOLVED') {
+      // Mostrar notificación
+      addToast({
+        title: 'Reunión finalizada ✅',
+        description: 'La reunión ha terminado exitosamente.',
+        tone: 'success',
+      });
+      
+      // Redirigir inmediatamente
+      const hash = getRouteHash('incident-detail', { id: incidentId });
+      navigate(hash);
+    }
+  }, [warRoom?.status, incidentId, addToast]);
+
+  // Efecto separado para manejar actualizaciones del WebSocket
+  useEffect(() => {
+    if (warRoom?.currentDurationSeconds !== undefined) {
+      // Solo usar valor del WebSocket si es positivo
+      if (warRoom.currentDurationSeconds >= 0) {
+        setCurrentDuration(warRoom.currentDurationSeconds);
+      }
+    }
+  }, [warRoom?.currentDurationSeconds]);
 
   useEffect(() => {
     if (!warRoom && incidentId) {
@@ -89,13 +168,13 @@ function WarRoom({ params }) {
       const timeInRoom = now - joinedTime;
       
       if (hasJoinedRef.current && meetingIdRef.current && timeInRoom > 5000) {
-        console.log('WarRoom: Leaving meeting after', timeInRoom, 'ms in room');
+
         leaveWarRoom(meetingIdRef.current);
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
         joinedTimeRef.current = null;
       } else if (hasJoinedRef.current) {
-        console.log('WarRoom: NOT leaving meeting, only', timeInRoom, 'ms in room (too quick)');
+
       }
     };
   }, [leaveWarRoom]);
@@ -105,16 +184,36 @@ function WarRoom({ params }) {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
     const handleWebSocketEvent = (eventType, payload) => {
+      console.log('WebSocket event received in WarRoom:', eventType, payload);
+      console.log('Current warRoomId:', warRoomId, 'Payload warRoomId:', payload.warRoomId);
+      
       // Handle warroom participant updates
-      if (eventType === 'warroom.participants' && payload.warRoomId === warRoomId) {
+      if (eventType === 'warroom.participants' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
         // Refresh the war room data to get updated participant list
         openWarRoom(incidentId);
       }
       
-      // Handle warroom resolution events
-      if (eventType === 'warroom.resolved' && payload.warRoomId === warRoomId) {
-        // Refresh the war room data to reflect the resolved status
+      // Handle warroom duration updates
+      if (eventType === 'warroom.duration' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
+
+        // The duration will be handled by the global state management
         openWarRoom(incidentId);
+      }
+      
+      // Handle warroom resolution events
+      if (eventType === 'warroom.resolved' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
+        console.log('Warroom resolved event received, redirecting...', payload);
+        
+        // Show notification that incident was resolved
+        addToast({
+          title: 'Incidente resuelto ✅',
+          description: 'La reunión ha finalizado exitosamente.',
+          tone: 'success',
+        });
+        
+        // Redirect all users to the incident detail page (no delay needed)
+        const hash = getRouteHash('incident-detail', { id: incidentId });
+        navigate(hash);
       }
       
       // Handle new messages (if implemented in backend)
@@ -126,10 +225,10 @@ function WarRoom({ params }) {
 
     const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
       onOpen: () => {
-        console.log('WarRoom: WebSocket connected for real-time updates');
+
       },
       onClose: () => {
-        console.log('WarRoom: WebSocket disconnected');
+
       },
       onError: (error) => {
         console.warn('WarRoom: WebSocket error:', error);
@@ -189,7 +288,7 @@ function WarRoom({ params }) {
     try {
       await updateIncidentStatus(incidentId, 'mark_contained');
       setConfirmContain(false);
-      navigate(getRouteHash('incident', { id: incidentId }));
+      navigate(getRouteHash('incident-detail', { id: incidentId }));
     } catch (error) {
       // El error ya es manejado por updateIncidentStatus, solo cerramos el modal
       setConfirmContain(false);
@@ -232,25 +331,35 @@ function WarRoom({ params }) {
             <span>Código: <strong>{warRoom.code}</strong></span>
             {warRoom.startTime && (
               <>
-                <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleString()}</strong></span>
+                <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
               </>
             )}
-            {warRoom.endTime && (
+            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.durationSeconds && (
+              <>
+                <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
+              </>
+            )}
+            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.endTime && (
               <>
                 <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
               </>
             )}
             {warRoom.status && (
               <>
-                <span style={{ marginLeft: '1em' }}>Estado: <strong>{warRoom.status}</strong></span>
+                <span style={{ marginLeft: '1em' }}>Estado: <strong>{warRoom.status === 'ACTIVE' ? 'Activa' : (warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') ? 'Resuelta' : warRoom.status}</strong></span>
               </>
             )}
           </div>
+          
+          {/* Cronómetro en tiempo real para reuniones activas */}
+          {warRoom.startTime && (
+            <div className="war-room-timer" style={{ fontSize: '1.1em', marginTop: '0.8em', padding: '0.5em', backgroundColor: 'var(--color-success-100)', borderRadius: '4px', border: '1px solid var(--color-success-300)' }}>
+              <span style={{ color: 'var(--color-success-700)', fontWeight: '600' }}>⏱️ Duración: <strong style={{ fontFamily: 'monospace', fontSize: '1.2em' }}>{formatDuration(currentDuration)}</strong></span>
+            </div>
+          )}
+          
           <div className="war-room-participants" style={{ fontSize: '0.85em', marginTop: '0.8em', opacity: 0.7 }}>
             <span>Participantes: <strong>{warRoom.currentParticipantCount || warRoom.participantEmails?.length || 0}</strong></span>
-            {warRoom.maxParticipants && (
-              <span style={{ marginLeft: '1em' }}>/ Máximo: <strong>{warRoom.maxParticipants}</strong></span>
-            )}
           </div>
         </div>
         <div className="actions-row">
