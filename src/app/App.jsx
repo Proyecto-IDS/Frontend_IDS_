@@ -85,6 +85,7 @@ function App() {
           activeKey={route.key}
           onNavigate={handleNavigate}
           user={auth.user}
+          hideSettings={route.key === 'war-room'}
         />
       )}
       <div className="app-workspace">
@@ -98,6 +99,7 @@ function App() {
             user={auth.user}
             onLogout={authLogout}
             authLoading={auth.loading}
+            hideUserActions={route.key === 'war-room'}
           />
         )}
         <main className={`app-main ${isAuthRoute ? 'auth-main' : ''}`} role="main">
