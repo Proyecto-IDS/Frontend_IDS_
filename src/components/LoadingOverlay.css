@@ -1,0 +1,104 @@
+/* Loading Overlay - Pantalla completa con efecto de brillo reducido */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-overlay-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.loading-overlay-content {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem 2.5rem;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+  animation: slideIn 0.4s ease-out;
+}
+
+.loading-spinner {
+  margin-bottom: 1.5rem;
+}
+
+.loading-icon {
+  font-size: 4rem;
+  display: inline-block;
+  animation: spin 1.5s linear infinite;
+}
+
+.loading-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.loading-description {
+  margin: 0;
+  font-size: 1rem;
+  color: #718096;
+  line-height: 1.4;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Variaciones de color según el tipo */
+.loading-overlay.creating .loading-title {
+  color: #e53e3e;
+}
+
+.loading-overlay.joining .loading-title {
+  color: #3182ce;
+}
+
+.loading-overlay.success .loading-title {
+  color: #38a169;
+}
