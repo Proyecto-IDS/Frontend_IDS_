@@ -138,47 +138,7 @@ function IncidentDetail({ params }) {
                   Ver solución aplicada
                 </button>
               )}
-              {incident.status === 'no-conocido' && (
-                <>
-                  {isAdmin ? (
-                    incident.warRoomId ? (
-                      <button 
-                        type="button" 
-                        className="btn primary" 
-                        onClick={() => {
-                          // Admin ya tiene reunión, unirse a ella
-                          const hash = getRouteHash('war-room', { id: incident.warRoomId });
-                          navigate(hash);
-                        }}
-                      >
-                        📋 Unirse a reunión
-                      </button>
-                    ) : (
-                      <button 
-                        type="button" 
-                        className="btn warn" 
-                        onClick={() => {
-                          handleOpenWarRoom();
-                        }}
-                      >
-                        🚨 Generar reunión
-                      </button>
-                    )
-                  ) : incident.warRoomId ? (
-                    <button 
-                      type="button" 
-                      className="btn primary" 
-                      onClick={() => {
-                        // Directamente navegar a la reunión
-                        const hash = getRouteHash('war-room', { id: incident.warRoomId });
-                        navigate(hash);
-                      }}
-                    >
-                      📋 Unirse a reunión
-                    </button>
-                  ) : null}
-                </>
-              )}
+              {/* Botones de reunión eliminados para incidentes no-conocidos */}
               {incident.status === 'falso-positivo' && (
                 <>
                   <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>

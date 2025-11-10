@@ -5,6 +5,7 @@ import { connectAlertsWebSocket } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
 const formatTimestamp = (value) => {
   if (!value) return '';
@@ -34,6 +35,14 @@ function WarRoom({ params }) {
   
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
+  
+  // Estado para el loading overlay
+  const [loadingOverlay, setLoadingOverlay] = useState({
+    isVisible: false,
+    title: '',
+    description: '',
+    icon: '🔄'
+  });
 
   const incidentId = useMemo(() => {
     if (warRoom?.incidentId) return warRoom.incidentId;
@@ -162,12 +171,12 @@ function WarRoom({ params }) {
   // Cleanup: leave meeting when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
-      // Only leave if we've been in the room for at least 5 seconds to avoid false dismounts
+      // Only leave if we've been in the room for at least 2 seconds to avoid false dismounts
       const now = Date.now();
       const joinedTime = hasJoinedRef.current ? (joinedTimeRef.current || now) : now;
       const timeInRoom = now - joinedTime;
       
-      if (hasJoinedRef.current && meetingIdRef.current && timeInRoom > 5000) {
+      if (hasJoinedRef.current && meetingIdRef.current && timeInRoom > 2000) {
 
         leaveWarRoom(meetingIdRef.current);
         hasJoinedRef.current = false;
@@ -184,8 +193,7 @@ function WarRoom({ params }) {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
     const handleWebSocketEvent = (eventType, payload) => {
-      console.log('WebSocket event received in WarRoom:', eventType, payload);
-      console.log('Current warRoomId:', warRoomId, 'Payload warRoomId:', payload.warRoomId);
+
       
       // Handle warroom participant updates
       if (eventType === 'warroom.participants' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
@@ -202,7 +210,7 @@ function WarRoom({ params }) {
       
       // Handle warroom resolution events
       if (eventType === 'warroom.resolved' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-        console.log('Warroom resolved event received, redirecting...', payload);
+
         
         // Show notification that incident was resolved
         addToast({
@@ -253,6 +261,158 @@ function WarRoom({ params }) {
     }
   }, [warRoom]);
 
+  // Deshabilitar navegación hacia atrás durante la reunión
+  useEffect(() => {
+    const disableBackButton = () => {
+      // Agregar una entrada al historial para bloquear el back
+      window.history.pushState(null, null, window.location.pathname);
+    };
+
+    const handlePopState = (event) => {
+      // Bloquear la navegación hacia atrás
+      window.history.pushState(null, null, window.location.pathname);
+      
+      // Mostrar mensaje opcional (puedes comentar esto si no quieres el toast)
+      // addToast({
+      //   title: '🚫 Navegación bloqueada',
+      //   description: 'Usa el botón "Dashboard" para salir de la reunión.',
+      //   tone: 'warning'
+      // });
+    };
+
+    // Bloquear inmediatamente al entrar
+    disableBackButton();
+    
+    // Escuchar intentos de navegación hacia atrás
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // Interceptar clics en botones de navegación del sidebar
+  useEffect(() => {
+    const handleSidebarClick = async (event) => {
+      const target = event.target;
+      
+      // Buscar si el clic es en el botón Dashboard del sidebar
+      const sidebarButton = target.closest('.sidebar-nav button');
+      const navLabel = sidebarButton?.querySelector('.nav-label');
+      
+      // Si es el botón Dashboard
+      if (sidebarButton && navLabel?.textContent === 'Dashboard') {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        // Mostrar overlay de salida
+        setLoadingOverlay({
+          isVisible: true,
+          title: '🚪 Saliendo de la reunión',
+          description: 'Finalizando sesión de mesa de trabajo...',
+          icon: '👋'
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        
+        setLoadingOverlay({
+          isVisible: true,
+          title: '📊 Regresando al Dashboard',
+          description: 'Cargando vista principal...',
+          icon: '🏠'
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+        navigate(getRouteHash('dashboard'));
+      }
+    };
+
+    // Escuchar clics en toda la página con captura
+    document.addEventListener('click', handleSidebarClick, true);
+    
+    return () => {
+      document.removeEventListener('click', handleSidebarClick, true);
+    };
+  }, [navigate]);
+
+  // Bloquear recarga de página durante la reunión
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Bloquear F5
+      if (event.key === 'F5') {
+        event.preventDefault();
+        return false;
+      }
+      
+      // Bloquear Ctrl+R y Cmd+R
+      if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+        event.preventDefault();
+        return false;
+      }
+      
+      // Bloquear Ctrl+F5 (hard refresh)
+      if (event.ctrlKey && event.key === 'F5') {
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    const handleBeforeUnload = (event) => {
+      // Mostrar mensaje de confirmación al intentar cerrar/recargar
+      event.preventDefault();
+      event.returnValue = 'Estás en una reunión activa. Si sales, serás removido de la mesa de trabajo.';
+      return 'Estás en una reunión activa. Si sales, serás removido de la mesa de trabajo.';
+    };
+
+    const handleUnload = () => {
+      // Hacer leave cuando realmente se está saliendo de la página
+      if (hasJoinedRef.current && meetingIdRef.current) {
+        try {
+          // Usar sendBeacon para garantizar que la petición se envíe
+          const url = `${settings.apiBaseUrl}/war-rooms/${meetingIdRef.current}/leave`;
+          
+          if (navigator.sendBeacon) {
+            // sendBeacon es más confiable para unload
+            const data = new FormData();
+            data.append('userId', auth?.user?.id || '');
+            navigator.sendBeacon(url, data);
+          } else {
+            // Fallback con fetch + keepalive
+            fetch(url, {
+              method: 'POST',
+              keepalive: true,
+              headers: {
+                'Authorization': `Bearer ${auth?.token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({})
+            }).catch(() => {}); // Ignorar errores en unload
+          }
+          
+          hasJoinedRef.current = false;
+          meetingIdRef.current = null;
+          joinedTimeRef.current = null;
+        } catch (error) {
+          // Ignorar errores durante unload
+        }
+      }
+    };
+
+    // Agregar listeners
+    document.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      // Cleanup
+      document.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleUnload);
+    };
+  }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!message.trim()) return;
@@ -295,6 +455,36 @@ function WarRoom({ params }) {
     }
   };
 
+  // Función para salir a Dashboard con overlay
+  const handleExitToDashboard = async () => {
+    setLoadingOverlay({
+      isVisible: true,
+      title: '🚪 Saliendo de la reunión',
+      description: 'Finalizando sesión de mesa de trabajo...',
+      icon: '👋'
+    });
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      
+      setLoadingOverlay({
+        isVisible: true,
+        title: '📊 Regresando al Dashboard',
+        description: 'Cargando vista principal...',
+        icon: '🏠'
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+      navigate(getRouteHash('dashboard'));
+    } catch (error) {
+      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+    }
+  };
+
+
+
   if (loading.warRoom && !warRoom) {
     return (
       <div className="page">
@@ -310,7 +500,7 @@ function WarRoom({ params }) {
           title="Mesa de trabajo no encontrada"
           description="Verifica que el incidente tenga una mesa asignada."
           action={
-            <button type="button" className="btn primary" onClick={() => navigate(getRouteHash('dashboard'))}>
+            <button type="button" className="btn primary" onClick={handleExitToDashboard}>
               Volver al dashboard
             </button>
           }
@@ -363,13 +553,6 @@ function WarRoom({ params }) {
           </div>
         </div>
         <div className="actions-row">
-          <button
-            type="button"
-            className="btn subtle"
-            onClick={() => navigate(getRouteHash('incident', { id: incidentId }))}
-          >
-            Volver al detalle
-          </button>
           {/* Solo mostrar el botón si el usuario es administrador */}
           {(auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN')) && (
             <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
@@ -446,6 +629,14 @@ function WarRoom({ params }) {
         cancelLabel="Cancelar"
         onCancel={() => setConfirmContain(false)}
         onConfirm={handleMarkContained}
+      />
+      
+      {/* Loading Overlay for exit actions */}
+      <LoadingOverlay 
+        isVisible={loadingOverlay.isVisible}
+        title={loadingOverlay.title}
+        description={loadingOverlay.description}
+        icon={loadingOverlay.icon}
       />
     </div>
   );

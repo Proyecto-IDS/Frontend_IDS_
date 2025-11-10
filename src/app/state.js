@@ -90,11 +90,23 @@ function loadStoredAuth() {
     if (!raw) {
       return { token: null, user: null };
     }
-    const parsed = JSON.parse(raw);
-    return {
-      token: typeof parsed?.token === 'string' ? parsed.token : null,
-      user: parsed?.user || null,
-    };
+    
+    // Try to parse as JSON first (for backwards compatibility)
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'string') {
+        // If it's a string inside JSON, use it directly
+        return { token: parsed, user: null };
+      } else if (typeof parsed?.token === 'string') {
+        // If it's the old format with token property, extract it
+        return { token: parsed.token, user: parsed.user || null };
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, treat as direct token string
+    }
+    
+    // Treat as direct token string
+    return { token: raw, user: null };
   } catch (error) {
     return { token: null, user: null };
   }
@@ -103,13 +115,12 @@ function loadStoredAuth() {
 const persistAuthState = (authState) => {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(
-      AUTH_STORAGE_KEY,
-      JSON.stringify({
-        token: authState.token ?? null,
-        user: authState.user ?? null,
-      }),
-    );
+    // Store only the token directly, no JSON structure
+    if (authState.token) {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, authState.token);
+    } else {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
   } catch (error) {
     // Failed to persist
   }

@@ -8,6 +8,7 @@ import Tag from '../components/Tag.jsx';
 import Pill from '../components/Pill.jsx';
 import SearchBox from '../components/SearchBox.jsx';
 import MonitorTraffic from '../components/MonitorTraffic/MonitorTraffic.jsx';
+import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
 const statusOptions = [
   { value: '', label: 'Todos' },
@@ -67,7 +68,7 @@ const normalizeSeverity = (severity) => {
 
 function Dashboard() {
   const { incidents, loading, traffic, settings, auth } = useAppState();
-  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket, openWarRoom, loadResolvedIncidents } = useAppActions();
+  const { loadIncidents, setTrafficIpFilter, selectTrafficPacket, openWarRoom, loadResolvedIncidents, addToast } = useAppActions();
   const [filters, setFilters] = useState({
     query: '',
     status: '',
@@ -79,8 +80,17 @@ function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [alertsPage, setAlertsPage] = useState(1);
   const [incidentsPage, setIncidentsPage] = useState(1);
+  const [meetingActions, setMeetingActions] = useState({}); // Track loading states for meetings
+  const [loadingOverlay, setLoadingOverlay] = useState({
+    isVisible: false,
+    title: '',
+    description: '',
+    icon: '🔄'
+  });
   const itemsPerPage = 5;
-  const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
+  const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN') || auth?.user?.role === 'ROLE_ADMIN';
+  
+
 
   // Load incidents on first mount (only if authenticated)
   useEffect(() => {
@@ -89,6 +99,11 @@ function Dashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth?.token]);
+
+  // Clear meeting actions when incidents change (to clean up stale loading states)
+  useEffect(() => {
+    setMeetingActions({});
+  }, [incidents]);
 
   // Apply filters when they change (only if authenticated)
   useEffect(() => {
@@ -271,34 +286,50 @@ function Dashboard() {
           
           // Si ya existe warRoomId, cualquiera puede unirse
           if (row.warRoomId) {
+            const isJoining = meetingActions[`join-${row.warRoomId}`];
+
             return (
               <button
                 type="button"
                 className="btn-link"
+                disabled={isJoining}
                 onClick={(e) => {
+
                   e.stopPropagation();
-                  navigate(getRouteHash('war-room', { id: row.warRoomId }));
+                  handleJoinWarRoom(row.warRoomId);
                 }}
                 title="Unirse a reunión"
+                style={{
+                  opacity: isJoining ? 0.6 : 1,
+                  cursor: isJoining ? 'not-allowed' : 'pointer'
+                }}
               >
-                � Unirse a reunión
+                📋 Unirse a reunión
               </button>
             );
           }
           
           // ADMIN: puede crear reunión si el incidente está sin conocer y no hay warRoomId
           if (isAdmin && row.status === 'no-conocido') {
+            const actionState = meetingActions[row.id];
+
             return (
               <button
                 type="button"
-              className="btn-link"
+                className="btn-link"
+                disabled={actionState}
                 onClick={(e) => {
+
                   e.stopPropagation();
                   handleOpenWarRoom(row.id);
                 }}
                 title="Crear reunión"
+                style={{
+                  opacity: actionState ? 0.6 : 1,
+                  cursor: actionState ? 'not-allowed' : 'pointer'
+                }}
               >
-                � Crear reunión
+                🚨 Crear reunión
               </button>
             );
           }
@@ -307,7 +338,7 @@ function Dashboard() {
         },
       },
     ],
-    [auth],
+    [auth, meetingActions],
   );
 
   const displayIncidents = useMemo(() => {
@@ -400,14 +431,114 @@ function Dashboard() {
   };
 
   const handleOpenWarRoom = async (incidentId) => {
+    // Prevent multiple clicks on the same incident
+    if (meetingActions[incidentId]) return;
+    
+
+    setMeetingActions(prev => ({ ...prev, [incidentId]: 'creating' }));
+    
+    // Show creating overlay
+    setLoadingOverlay({
+      isVisible: true,
+      title: '� Creando reunión de emergencia',
+      description: `Preparando mesa de trabajo para incidente crítico ${incidentId}`,
+      icon: '🔄'
+    });
+    
     try {
+      // Add a delay to show the overlay longer
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       const warRoom = await openWarRoom(incidentId);
       const warRoomId = warRoom?.id || warRoom?.warRoomId;
       if (warRoomId) {
+        setMeetingActions(prev => ({ ...prev, [incidentId]: 'joining' }));
+        
+        // Show entering overlay
+        setLoadingOverlay({
+          isVisible: true,
+          title: '🚪 Entrando a la reunión',
+          description: 'Redirigiendo a la mesa de trabajo de emergencia...',
+          icon: '✨'
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        
+        // Hide overlay before navigation
+        setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+        
         navigate(getRouteHash('war-room', { id: warRoomId }));
       }
     } catch (error) {
-      // Error handling
+      // Error handling - remove loading state
+      setMeetingActions(prev => {
+        const { [incidentId]: _, ...rest } = prev;
+        return rest;
+      });
+      
+      // Hide overlay and show error
+      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+      
+      addToast({
+        title: '❌ Error al crear reunión',
+        description: 'No se pudo crear la mesa de trabajo. Intenta nuevamente.',
+        tone: 'danger'
+      });
+    }
+  };
+
+  const handleJoinWarRoom = async (warRoomId) => {
+
+    // Prevent multiple clicks on the same meeting
+    if (meetingActions[`join-${warRoomId}`]) {
+
+      return;
+    }
+    
+
+    setMeetingActions(prev => ({ ...prev, [`join-${warRoomId}`]: 'joining' }));
+    
+    // Show joining overlay
+    setLoadingOverlay({
+      isVisible: true,
+      title: '🔄 Uniéndose a reunión activa',
+      description: `Accediendo a la mesa de trabajo de emergencia...`,
+      icon: '🚪'
+    });
+    
+    try {
+      // Add a delay to show the overlay longer
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      
+      // Show entering overlay
+      setLoadingOverlay({
+        isVisible: true,
+        title: '✅ ¡Reunión encontrada!',
+        description: 'Entrando a la mesa de trabajo...',
+        icon: '🎯'
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Hide overlay before navigation
+      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+      
+      navigate(getRouteHash('war-room', { id: warRoomId }));
+    } catch (error) {
+      // Error handling - remove loading state
+      setMeetingActions(prev => {
+        const { [`join-${warRoomId}`]: _, ...rest } = prev;
+        return rest;
+      });
+      
+      // Hide overlay and show error
+      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+      
+      addToast({
+        title: '❌ Error al unirse',
+        description: 'No se pudo acceder a la reunión. Intenta nuevamente.',
+        tone: 'danger'
+      });
     }
   };
 
@@ -598,6 +729,14 @@ function Dashboard() {
           emptyMessage="No se encontraron incidentes con los filtros actuales."
         />
       </section>
+      
+      {/* Loading Overlay for meeting actions */}
+      <LoadingOverlay 
+        isVisible={loadingOverlay.isVisible}
+        title={loadingOverlay.title}
+        description={loadingOverlay.description}
+        icon={loadingOverlay.icon}
+      />
     </div>
   );
 }
