@@ -25,9 +25,14 @@ function isAdmin(user) {
   return false;
 }
 
-const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate, user }) {
+const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate, user, hideSettings = false }) {
   const userIsAdmin = isAdmin(user);
-  const visibleItems = navItems.filter(item => !item.adminOnly || userIsAdmin);
+  const visibleItems = navItems.filter(item => {
+    // Si hideSettings es true, ocultar configuración
+    if (hideSettings && item.key === 'settings') return false;
+    // Aplicar filtro normal de admin
+    return !item.adminOnly || userIsAdmin;
+  });
   
   return (
     <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''}`} aria-label="Navegación principal">

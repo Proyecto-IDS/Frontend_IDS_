@@ -15,6 +15,7 @@ const Topbar = memo(function Topbar({
   user,
   onLogout,
   authLoading = false,
+  hideUserActions = false,
 }) {
   const initials = user?.name
     ? user.name
@@ -45,7 +46,7 @@ const Topbar = memo(function Topbar({
         >
           {themeLabels[theme] || 'Tema'}
         </button>
-        {user ? (
+        {user && !hideUserActions ? (
           <div className="topbar-user">
             {user.picture ? (
               <img src={user.picture} alt={user.name || user.email} />
