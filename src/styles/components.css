@@ -156,10 +156,6 @@
 }
 
 @media (max-width: 960px) {
-  .menu-toggle {
-    display: inline-flex;
-  }
-
   .sidebar.is-collapsed {
     width: 240px;
     align-items: stretch;
@@ -168,8 +164,20 @@
 
 @media (min-width: 961px) {
   .sidebar.is-collapsed {
-    width: 72px;
+    width: 56px;
     align-items: center;
+    overflow: hidden;
+    transition: width 0.3s ease;
+  }
+
+  .sidebar.is-collapsed .sidebar-brand,
+  .sidebar.is-collapsed .nav-description,
+  .sidebar.is-collapsed .nav-label {
+    display: none;
+  }
+
+  .sidebar.is-collapsed .sidebar-nav {
+    display: none;
   }
 }
 
