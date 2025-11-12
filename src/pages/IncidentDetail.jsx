@@ -37,7 +37,7 @@ const formatDuration = (seconds) => {
 
 function IncidentDetail({ params }) {
   const { id } = params;
-  const { selectedIncident, loading, auth } = useAppState();
+  const { selectedIncident, loading, auth, warRooms } = useAppState();
   const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -64,6 +64,20 @@ function IncidentDetail({ params }) {
   }, [id, selectedIncident]);
 
   const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
+
+  const warRoomState = useMemo(() => {
+    if (!incident?.warRoomId) return null;
+    return warRooms?.[incident.warRoomId] || null;
+  }, [warRooms, incident?.warRoomId]);
+
+  const computeEndTime = useMemo(() => {
+    if (incident?.warRoomStartTime && incident?.warRoomDuration) {
+      const start = new Date(incident.warRoomStartTime).getTime();
+      const endMs = start + Number(incident.warRoomDuration || 0) * 1000;
+      return new Date(endMs);
+    }
+    return null;
+  }, [incident?.warRoomStartTime, incident?.warRoomDuration]);
 
   const handleOpenWarRoom = async () => {
     try {
@@ -171,16 +185,6 @@ function IncidentDetail({ params }) {
             </dd>
           </div>
           <div>
-            <dt>Última actualización</dt>
-            <dd>
-              {incident.updatedAt ? (
-                <time dateTime={incident.updatedAt}>{new Date(incident.updatedAt).toLocaleString()}</time>
-              ) : (
-                '—'
-              )}
-            </dd>
-          </div>
-          <div>
             <dt>Activos relacionados</dt>
             <dd>{incident.relatedAssets?.join(', ') || 'Sin referencias'}</dd>
           </div>
@@ -188,43 +192,49 @@ function IncidentDetail({ params }) {
             <dt>Notas</dt>
             <dd>{incident.notes || 'Agrega notas para el equipo de respuesta.'}</dd>
           </div>
-          {/* Información de reunión si existe warRoomId */}
-          {incident.warRoomId && (
-            <>
-              <div>
-                <dt>Código de reunión</dt>
-                <dd>{incident.warRoomCode || '—'}</dd>
-              </div>
-              <div>
-                <dt>Estado de reunión</dt>
-                <dd>
-                  {incident.status === 'contenido' ? (
-                    <Tag tone="success">Resuelta</Tag>
-                  ) : (
-                    <Tag tone="info">Activa</Tag>
-                  )}
-                </dd>
-              </div>
-              {incident.warRoomStartTime && (
-                <div>
-                  <dt>Fecha de inicio de reunión</dt>
-                  <dd>
-                    <time dateTime={incident.warRoomStartTime}>
-                      {new Date(incident.warRoomStartTime).toLocaleString()}
-                    </time>
-                  </dd>
-                </div>
-              )}
-              {incident.status === 'contenido' && incident.warRoomDuration && (
-                <div>
-                  <dt>Duración de reunión</dt>
-                  <dd>{formatDuration(incident.warRoomDuration)}</dd>
-                </div>
-              )}
-            </>
-          )}
         </dl>
       </section>
+
+      {incident.warRoomId && (
+        <section>
+          <div className={`meeting-card minimal ${incident.status === 'contenido' ? 'resolved' : 'active'}`} role="group" aria-label="Información de mesa de trabajo">
+            <div className="meeting-header">
+              <h4 className="meeting-title">Información de Mesa de Trabajo</h4>
+              <span className={`meeting-badge ${incident.status === 'contenido' ? 'resolved' : 'active'}`}>{incident.status === 'contenido' ? 'Resuelta' : 'Activa'}</span>
+            </div>
+            <div className="meeting-info-grid">
+              <div className="meeting-info-item">
+                <span className="meeting-info-label">Código</span>
+                <span className="meeting-info-value">{incident.warRoomCode || '—'}</span>
+              </div>
+              <div className="meeting-info-item">
+                <span className="meeting-info-label">Participantes{incident.status !== 'contenido' ? ' actuales' : ''}</span>
+                <span className="meeting-info-value">
+                  {incident.status === 'contenido'
+                    ? (warRoomState?.maxParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))
+                    : (warRoomState?.currentParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))}
+                </span>
+              </div>
+              <div className="meeting-info-item">
+                <span className="meeting-info-label">Inicio</span>
+                <span className="meeting-info-value">
+                  {incident.warRoomStartTime ? (
+                    <time dateTime={incident.warRoomStartTime}>{new Date(incident.warRoomStartTime).toLocaleString()}</time>
+                  ) : '—'}
+                </span>
+              </div>
+              {incident.status === 'contenido' && computeEndTime && (
+                <div className="meeting-info-item">
+                  <span className="meeting-info-label">Fin</span>
+                  <span className="meeting-info-value">
+                    <time dateTime={computeEndTime.toISOString()}>{computeEndTime.toLocaleString()}</time>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="panel">
         <header>
@@ -237,19 +247,51 @@ function IncidentDetail({ params }) {
         <header>
           <h3>Análisis IA</h3>
         </header>
-        <p>{incident.aiSummary || 'El backend proporcionará un resumen con hallazgos de la IA.'}</p>
+        <div className="ai-analysis">
+          <div className="ai-analysis-header">
+            <div className="ai-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+              </svg>
+            </div>
+            <h4 className="ai-analysis-title">Análisis generado por IA</h4>
+          </div>
+          <div className="ai-analysis-content">
+            {incident.aiSummary || 'El backend proporcionará un resumen con hallazgos de la IA.'}
+          </div>
+        </div>
       </section>
 
-      <section className="panel">
-        <header>
-          <h3>{incident.status === 'contenido' ? 'Incidente resuelto' : 'Acciones disponibles'}</h3>
-        </header>
-        {incident.status === 'contenido' ? (
-          <div className="resolved-info">
-            <p>✅ Este incidente ha sido marcado como contenido y la reunión ha finalizado.</p>
-            <p>No se requieren acciones adicionales. El incidente se considera completamente resuelto.</p>
+      {incident.status === 'contenido' ? (
+        <section>
+          <div className="resolved-banner" role="status" aria-live="polite">
+            <div className="resolved-banner-header">
+              <div className="resolved-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17 4.83 12l-1.42 1.41L9 19l12-12-1.41-1.41z" />
+                </svg>
+              </div>
+              <div className="resolved-content">
+                <h4>Incidente Completamente Resuelto</h4>
+                <p>
+                  La mesa de trabajo ha finalizado exitosamente y el incidente ha sido marcado como contenido. No se
+                  requieren acciones adicionales.
+                </p>
+              </div>
+            </div>
+            {incident.warRoomDuration && (
+              <div className="resolved-banner-time">
+                <div className="resolved-banner-time-value">{formatDuration(incident.warRoomDuration)}</div>
+                <div className="resolved-banner-time-label">TIEMPO DE RESOLUCIÓN</div>
+              </div>
+            )}
           </div>
-        ) : (
+        </section>
+      ) : (
+        <section className="panel">
+          <header>
+            <h3>Acciones disponibles</h3>
+          </header>
           <ul className="actions-list">
             {incident.status === 'conocido' && <li>Revisar los logs asociados y validar que el bloqueo siga vigente.</li>}
             {incident.status === 'no-conocido' && (
@@ -260,8 +302,8 @@ function IncidentDetail({ params }) {
             )}
             <li>Registrar notas relevantes para auditoría.</li>
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       <Modal
         open={solutionOpen}
