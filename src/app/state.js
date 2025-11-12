@@ -574,7 +574,7 @@ export function AppProvider({ children }) {
           };
           
           actions.addToast({
-            title: 'Nueva alerta',
+            title: 'Nueva alerta detectada',
             description: `Severidad ${alert.severity || 'media'} detectada en paquete ${alert.packetId}`,
             tone: alert.severity === 'critica' || alert.severity === 'critical' || alert.severity === 'alta' || alert.severity === 'high' ? 'danger' : 'warn',
           });
@@ -816,29 +816,7 @@ export function AppProvider({ children }) {
         incidents.forEach((incident) => {
           cacheRef.current.incidentDetails.set(incident.id, incident);
         });
-        
-        // Mostrar notificaciones de alertas frescas (últimos 5 minutos) que aún no han sido notificadas
-        const now = new Date();
-        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-        const freshAlerts = incidents.filter(inc => {
-          if (!inc.createdAt) return false;
-          const incDate = new Date(inc.createdAt);
-          const alertKey = `${inc.id}-${inc.createdAt}`;
-          // Solo si es fresco Y no ha sido notificado
-          return incDate >= fiveMinutesAgo && !cacheRef.current.notifiedAlertIds.has(alertKey);
-        });
-        
-        freshAlerts.forEach(alert => {
-          const alertKey = `${alert.id}-${alert.createdAt}`;
-          cacheRef.current.notifiedAlertIds.add(alertKey);
-          
-          addToast({
-            title: 'Alerta de incidente',
-            description: `Severidad ${alert.severity || 'media'} detectada en paquete ${alert.source || 'desconocido'}`,
-            tone: alert.severity === 'critica' || alert.severity === 'critical' || alert.severity === 'alta' || alert.severity === 'high' ? 'danger' : 'warn',
-          });
-        });
-        
+  
         return merged;
       } catch (error) {
         addToast({
