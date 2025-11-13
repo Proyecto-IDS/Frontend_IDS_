@@ -12,6 +12,29 @@ const formatTimestamp = (value) => {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+function isAdmin(user) {
+  if (!user) return false;
+  const role = user.role;
+  const authorities = user.authorities;
+  
+  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
+    return true;
+  }
+  
+  if (Array.isArray(authorities)) {
+    return authorities.some(auth => {
+      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
+      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
+    });
+  }
+  
+  if (Array.isArray(user.roles)) {
+    return user.roles.some(r => r === 'ROLE_ADMIN' || r === 'ADMIN' || r === 'admin');
+  }
+  
+  return false;
+}
+
 const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 10000);
 
 function WarRoom({ params }) {
@@ -431,11 +454,7 @@ function WarRoom({ params }) {
   };
 
   const handleMarkContained = async () => {
-    if (!incidentId) return;
-    
-    // Verificar que el usuario sea administrador
-    const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
-    if (!isAdmin) {
+    if (!isAdmin(auth?.user)) {
       addToast({
         title: 'Acceso denegado',
         description: 'Solo los administradores pueden marcar incidentes como contenidos.',
@@ -444,13 +463,40 @@ function WarRoom({ params }) {
       setConfirmContain(false);
       return;
     }
-    
-    try {
-      await updateIncidentStatus(incidentId, 'mark_contained');
+
+    if (!warRoomId) {
+      addToast({
+        title: 'Error',
+        description: 'No se encontró el ID de la reunión.',
+        tone: 'danger',
+      });
       setConfirmContain(false);
-      navigate(getRouteHash('incident-detail', { id: incidentId }));
+      return;
+    }
+
+    try {
+      const { markIncidentAsResolved } = await import('../app/api.js');
+      await markIncidentAsResolved(warRoomId, settings.apiBaseUrl);
+      
+      addToast({
+        title: 'Reunión finalizada ✅',
+        description: 'El incidente ha sido marcado como resuelto.',
+        tone: 'success',
+      });
+      
+      setConfirmContain(false);
+      
+      if (incidentId && incidentId !== warRoomId) {
+        navigate(getRouteHash('incident-detail', { id: incidentId }));
+      } else {
+        navigate(getRouteHash('dashboard'));
+      }
     } catch (error) {
-      // El error ya es manejado por updateIncidentStatus, solo cerramos el modal
+      addToast({
+        title: 'No se pudo marcar como contenido',
+        description: error.message || 'Intenta nuevamente.',
+        tone: 'danger',
+      });
       setConfirmContain(false);
     }
   };
@@ -554,7 +600,7 @@ function WarRoom({ params }) {
         </div>
         <div className="actions-row">
           {/* Solo mostrar el botón si el usuario es administrador */}
-          {(auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN')) && (
+          {isAdmin(auth?.user) && (
             <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
               Marcar como contenido
             </button>
