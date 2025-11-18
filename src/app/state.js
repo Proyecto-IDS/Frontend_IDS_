@@ -174,9 +174,7 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'settings/loaded': {
-      return { ...state, settings: action.payload };
-    }
+    case 'settings/loaded':
     case 'settings/saved': {
       return { ...state, settings: action.payload };
     }
