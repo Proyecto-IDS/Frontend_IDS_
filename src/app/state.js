@@ -885,7 +885,7 @@ export function AppProvider({ children }) {
           
           // Get the current incident to find the warRoomId (meetingId)
           const currentIncident = await getIncidentById(id, state.settings.apiBaseUrl);
-          if (!currentIncident || !currentIncident.warRoomId) {
+          if (!currentIncident?.warRoomId) {
             throw new Error('No se encontró la reunión asociada al incidente');
           }
           
@@ -947,7 +947,7 @@ export function AppProvider({ children }) {
 
     // Helper: fetch existing meeting
     const fetchExistingMeeting = async (id) => {
-      if (isNaN(id)) return null;
+      if (Number.isNaN(id)) return null;
       
       try {
         const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
