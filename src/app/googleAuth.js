@@ -11,13 +11,13 @@ let gsiScriptLoaded = false;
 
 // Load Google Identity Services script dynamically
 function loadGSIScript() {
-  if (gsiScriptLoaded || typeof window === 'undefined') {
+  if (gsiScriptLoaded || !globalThis.window) {
     return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {
     // Check if already loaded
-    if (window.google?.accounts?.id) {
+    if (globalThis.google?.accounts?.id) {
       gsiScriptLoaded = true;
       resolve();
       return;
@@ -39,7 +39,7 @@ function loadGSIScript() {
 }
 
 export async function initGoogle(clientId) {
-  if (!clientId || typeof window === 'undefined') {
+  if (!clientId || !globalThis.window) {
     console.warn('initGoogle: no client ID or not in browser');
     return;
   }
@@ -56,9 +56,9 @@ export async function initGoogle(clientId) {
   
   // Wait for GSI to be available
   const waitForGSI = () => {
-    if (window.google?.accounts?.id) {
+    if (globalThis.google?.accounts?.id) {
       try {
-        window.google.accounts.id.initialize({
+        globalThis.google.accounts.id.initialize({
           client_id: clientId,
           callback: (resp) => {
             // resp.credential contains the id_token
@@ -68,7 +68,7 @@ export async function initGoogle(clientId) {
               pendingRejecter = null;
             } else {
               // store temporarily on window for next request
-              window.__ids_pending_credential = resp.credential;
+              globalThis.__ids_pending_credential = resp.credential;
             }
           },
           ux_mode: 'popup',
@@ -91,8 +91,8 @@ export async function requestIdToken({ timeoutMs = 60000 } = {}) {
   if (!storedClientId) {
     throw new Error('Google client ID not configured. Call initGoogle(clientId) first.');
   }
-  
-  if (typeof window === 'undefined') {
+
+  if (!globalThis.window) {
     throw new Error('Not running in a browser environment');
   }
   
@@ -108,9 +108,9 @@ export async function requestIdToken({ timeoutMs = 60000 } = {}) {
   }
   
   // If a credential was already received by the callback, use it
-  if (window.__ids_pending_credential) {
-    const token = window.__ids_pending_credential;
-    window.__ids_pending_credential = null;
+  if (globalThis.__ids_pending_credential) {
+    const token = globalThis.__ids_pending_credential;
+    globalThis.__ids_pending_credential = null;
     return token;
   }
 
@@ -129,7 +129,7 @@ export async function requestIdToken({ timeoutMs = 60000 } = {}) {
     document.body.appendChild(container);
 
     try {
-      window.google.accounts.id.renderButton(container, {
+      globalThis.google.accounts.id.renderButton(container, {
         theme: 'outline',
         size: 'large',
       });
