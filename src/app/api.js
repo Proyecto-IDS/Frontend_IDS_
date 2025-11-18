@@ -96,34 +96,30 @@ export async function authLogout() {
 
 export async function getIncidents(filters = {}, baseUrl) {
   // Backend_IDS uses /api/alerts instead of /incidents
-  try {
-    // Ensure we have a valid baseUrl
-    const url = baseUrl || 'http://localhost:8080';
-    const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
-    const alertsUrl = toUrl(url, '/api/alerts', { limit });
-    
-    const alerts = await request(alertsUrl, { method: 'GET' });
-    
-    // Convert alerts to incident format
-    if (!Array.isArray(alerts)) return [];
-    return alerts.map((alert) => ({
-      id: alert.incidentId || `alert-${alert.id}`,
-      source: alert.packetId,
-      severity: alert.severity,
-      createdAt: alert.timestamp,
-      detection: {
-        model_version: alert.modelVersion || alert.model_version,
-        model_score: alert.score,
-      },
-      status: 'no-conocido',
-      type: 'alert',
-      linkedPacketId: alert.packetId,
-      _alertId: alert.id,
-      warRoomId: alert.warRoomId,  // Include warRoomId from backend
-    }));
-  } catch (error) {
-    throw error;
-  }
+  // Ensure we have a valid baseUrl
+  const url = baseUrl || 'http://localhost:8080';
+  const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
+  const alertsUrl = toUrl(url, '/api/alerts', { limit });
+
+  const alerts = await request(alertsUrl, { method: 'GET' });
+
+  // Convert alerts to incident format
+  if (!Array.isArray(alerts)) return [];
+  return alerts.map((alert) => ({
+    id: alert.incidentId || `alert-${alert.id}`,
+    source: alert.packetId,
+    severity: alert.severity,
+    createdAt: alert.timestamp,
+    detection: {
+      model_version: alert.modelVersion || alert.model_version,
+      model_score: alert.score,
+    },
+    status: 'no-conocido',
+    type: 'alert',
+    linkedPacketId: alert.packetId,
+    _alertId: alert.id,
+    warRoomId: alert.warRoomId,  // Include warRoomId from backend
+  }));
 }
 
 export async function getIncidentById(id, baseUrl) {
