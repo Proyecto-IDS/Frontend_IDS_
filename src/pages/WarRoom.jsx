@@ -44,7 +44,6 @@ function WarRoom({ params }) {
     openWarRoom,
     loadWarRoomMessages,
     sendWarRoomMessage,
-    updateIncidentStatus,
     updateWarRoomChecklist,
     joinWarRoom,
     leaveWarRoom,
@@ -205,8 +204,6 @@ function WarRoom({ params }) {
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
         joinedTimeRef.current = null;
-      } else if (hasJoinedRef.current) {
-
       }
     };
   }, [leaveWarRoom]);
@@ -580,11 +577,17 @@ function WarRoom({ params }) {
                 <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
               </>
             )}
-            {warRoom.status && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Estado: <strong>{warRoom.status === 'ACTIVE' ? 'Activa' : (warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') ? 'Resuelta' : warRoom.status}</strong></span>
-              </>
-            )}
+            {warRoom.status && (() => {
+              let statusLabel = warRoom.status;
+              if (warRoom.status === 'ACTIVE') {
+                statusLabel = 'Activa';
+              } else if (warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') {
+                statusLabel = 'Resuelta';
+              }
+              return (
+                <span style={{ marginLeft: '1em' }}>Estado: <strong>{statusLabel}</strong></span>
+              );
+            })()}
           </div>
           
           {/* Cronómetro en tiempo real para reuniones activas */}
