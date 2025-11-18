@@ -532,7 +532,7 @@ export function AppProvider({ children }) {
 
     // Helper: show toast notification
     const showToast = (title, description, tone) => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const id = crypto.randomUUID();
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
       window.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
     };
@@ -757,7 +757,7 @@ export function AppProvider({ children }) {
     };
 
     const addToast = ({ title, description, tone = 'info' }) => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const id = crypto.randomUUID();
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
       window.setTimeout(() => dismissToast(id), 4000);
     };
