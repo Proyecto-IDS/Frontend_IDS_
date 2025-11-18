@@ -105,30 +105,40 @@ function Dashboard() {
     setMeetingActions({});
   }, [incidents]);
 
+  // Helper: convert Spanish severity to English for backend
+  const convertSeverityToEnglish = useCallback((severity) => {
+    if (!severity) return '';
+    
+    const severityMap = {
+      'critica': 'critical',
+      'alta': 'high',
+      'media': 'medium',
+      'baja': 'low'
+    };
+    
+    return severityMap[severity] || severity;
+  }, []);
+
+  // Helper: load incidents based on filter type
+  const loadFilteredIncidents = useCallback(() => {
+    if (filters.meeting === 'resolved') {
+      loadResolvedIncidents();
+      return;
+    }
+    
+    const backendFilters = {
+      ...filters,
+      severity: convertSeverityToEnglish(filters.severity),
+    };
+    loadIncidents(backendFilters);
+  }, [filters, loadIncidents, loadResolvedIncidents, convertSeverityToEnglish]);
+
   // Apply filters when they change (only if authenticated)
   useEffect(() => {
     if (!auth?.token) return;
     
-    setIncidentsPage(1); // Reset to first page when filters change
-    const timeoutId = window.setTimeout(() => {
-      if (filters.meeting === 'resolved') {
-        // Load resolved incidents from the special endpoint
-        loadResolvedIncidents();
-      } else {
-        // Convert Spanish severity to English for backend
-        const backendFilters = {
-          ...filters,
-          severity: filters.severity ? (
-            filters.severity === 'critica' ? 'critical' :
-            filters.severity === 'alta' ? 'high' :
-            filters.severity === 'media' ? 'medium' :
-            filters.severity === 'baja' ? 'low' :
-            filters.severity
-          ) : '',
-        };
-        loadIncidents(backendFilters);
-      }
-    }, 250);
+    setIncidentsPage(1);
+    const timeoutId = window.setTimeout(loadFilteredIncidents, 250);
     return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, auth?.token]);
