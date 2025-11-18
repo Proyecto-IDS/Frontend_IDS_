@@ -69,8 +69,8 @@ const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) =>
 
 function IncidentDetail({ params }) {
   const { id } = params;
-  const { selectedIncident, loading, auth, warRooms } = useAppState();
-  const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
+  const { selectedIncident, loading, warRooms } = useAppState();
+  const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, addToast } = useAppActions();
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
