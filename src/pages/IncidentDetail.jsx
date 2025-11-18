@@ -186,9 +186,9 @@ function IncidentDetail({ params }) {
 
       {incident.warRoomId && (
         <section>
-          <div className={`meeting-card minimal ${incident.status === 'contenido' ? 'resolved' : 'active'}`} role="group" aria-label="Información de mesa de trabajo">
+          <fieldset className={`meeting-card minimal ${incident.status === 'contenido' ? 'resolved' : 'active'}`} aria-label="Información de mesa de trabajo">
+            <legend className="meeting-title">Información de Mesa de Trabajo</legend>
             <div className="meeting-header">
-              <h4 className="meeting-title">Información de Mesa de Trabajo</h4>
               <span className={`meeting-badge ${incident.status === 'contenido' ? 'resolved' : 'active'}`}>{incident.status === 'contenido' ? 'Resuelta' : 'Activa'}</span>
             </div>
             <div className="meeting-info-grid">
@@ -221,7 +221,7 @@ function IncidentDetail({ params }) {
                 </div>
               )}
             </div>
-          </div>
+          </fieldset>
         </section>
       )}
 
