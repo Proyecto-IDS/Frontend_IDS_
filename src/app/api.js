@@ -94,12 +94,11 @@ export async function authLogout() {
 
 // --- Incidentes (Alertas en Backend_IDS) ---
 
-export async function getIncidents(filters = {}, baseUrl) {
+export async function getIncidents(filters = {}, baseUrl = 'http://localhost:8080') {
   // Backend_IDS uses /api/alerts instead of /incidents
   // Ensure we have a valid baseUrl
-  const url = baseUrl || 'http://localhost:8080';
   const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
-  const alertsUrl = toUrl(url, '/api/alerts', { limit });
+  const alertsUrl = toUrl(baseUrl, '/api/alerts', { limit });
 
   const alerts = await request(alertsUrl, { method: 'GET' });
 
