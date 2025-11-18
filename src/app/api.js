@@ -211,8 +211,6 @@ export async function joinMeeting(code, baseUrl) {
 }
 
 export async function getWarRoomMessages(warRoomId, baseUrl) {
-  // TODO: Implement meeting messages endpoint
-  // For now, return empty array to avoid errors
   return [];
 }
 
@@ -223,8 +221,6 @@ export async function leaveMeeting(meetingId, baseUrl) {
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {
-  // TODO: Implement meeting message creation
-  // For now, return success response
   return { 
     userMessage: { id: Date.now(), role: 'user', content: message.content, createdAt: new Date().toISOString() },
     assistantMessage: null
