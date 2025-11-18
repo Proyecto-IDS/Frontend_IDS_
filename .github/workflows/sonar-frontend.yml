@@ -1,0 +1,37 @@
+name: SonarCloud Frontend Analysis
+
+on:
+  push:
+    branches:
+      - feature-realtime-meeting
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonar:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run tests (if available)
+        run: npm run test --if-present || echo "No tests configured"
+        continue-on-error: true
+        
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
