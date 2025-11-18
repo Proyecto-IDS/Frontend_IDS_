@@ -78,7 +78,7 @@ function WarRoom({ params }) {
     if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
     
     const numSeconds = Number(seconds);
-    if (isNaN(numSeconds)) return '00:00:00';
+    if (Number.isNaN(numSeconds)) return '00:00:00';
     
     const hours = Math.floor(numSeconds / 3600);
     const minutes = Math.floor((numSeconds % 3600) / 60);
