@@ -775,6 +775,13 @@ export function AppProvider({ children }) {
       return payload;
     };
 
+    // Helper: check if incident is WebSocket-only
+    const isWebSocketOnly = (incident, apiAlerts) => {
+      return incident.type === 'alert' && 
+             incident._from === 'websocket' && 
+             !apiAlerts.some(apiAlert => apiAlert.id === incident.id);
+    };
+
     // Helper: merge API and WebSocket incidents
     const mergeIncidents = (apiIncidents, existingIncidents) => {
       const apiAlerts = apiIncidents.map(incident => ({
@@ -783,11 +790,7 @@ export function AppProvider({ children }) {
         _from: 'api'
       }));
       
-      const wsOnlyAlerts = existingIncidents.filter(inc => 
-        inc.type === 'alert' && 
-        inc._from === 'websocket' && 
-        !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
-      );
+      const wsOnlyAlerts = existingIncidents.filter(inc => isWebSocketOnly(inc, apiAlerts));
       
       return [...apiAlerts, ...wsOnlyAlerts];
     };
