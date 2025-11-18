@@ -55,6 +55,40 @@ const request = async (url, init = {}) => {
   }
 };
 
+const get = (baseUrl, path, params) => {
+  const url = toUrl(baseUrl, path, params);
+  return request(url, { method: 'GET' });
+};
+
+const post = (baseUrl, path, payload) => {
+  const url = toUrl(baseUrl, path);
+  if (payload === undefined) {
+    return request(url, { method: 'POST' });
+  }
+  return request(url, {
+    method: 'POST',
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify(payload),
+  });
+};
+
+const mapAlertToIncident = (alert, overrides = {}) => ({
+  id: alert.incidentId || `alert-${alert.id}`,
+  source: alert.packetId,
+  severity: alert.severity,
+  createdAt: alert.timestamp,
+  detection: {
+    model_version: alert.modelVersion || alert.model_version,
+    model_score: alert.score,
+  },
+  status: 'no-conocido',
+  type: 'alert',
+  linkedPacketId: alert.packetId,
+  _alertId: alert.id,
+  warRoomId: alert.warRoomId,
+  ...overrides,
+});
+
 // --- Autenticación --------------------------------------------------------
 
 export async function authStartGoogle(baseUrl) {
@@ -67,17 +101,11 @@ export async function authStartGoogle(baseUrl) {
   await initGoogle(clientId);
   const idToken = await requestIdToken({ timeoutMs: 60000 });
 
-  const url = toUrl(baseUrl, '/api/auth/google');
-  return request(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({ idToken }),
-  });
+  return post(baseUrl, '/api/auth/google', { idToken });
 }
 
 export async function authFetchMe(baseUrl) {
-  const url = toUrl(baseUrl, '/api/auth/me');
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/api/auth/me');
 }
 
 export async function authFetchSessionStatus() {
@@ -98,27 +126,11 @@ export async function getIncidents(filters = {}, baseUrl = 'http://localhost:808
   // Backend_IDS uses /api/alerts instead of /incidents
   // Ensure we have a valid baseUrl
   const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
-  const alertsUrl = toUrl(baseUrl, '/api/alerts', { limit });
-
-  const alerts = await request(alertsUrl, { method: 'GET' });
+  const alerts = await get(baseUrl, '/api/alerts', { limit });
 
   // Convert alerts to incident format
   if (!Array.isArray(alerts)) return [];
-  return alerts.map((alert) => ({
-    id: alert.incidentId || `alert-${alert.id}`,
-    source: alert.packetId,
-    severity: alert.severity,
-    createdAt: alert.timestamp,
-    detection: {
-      model_version: alert.modelVersion || alert.model_version,
-      model_score: alert.score,
-    },
-    status: 'no-conocido',
-    type: 'alert',
-    linkedPacketId: alert.packetId,
-    _alertId: alert.id,
-    warRoomId: alert.warRoomId,  // Include warRoomId from backend
-  }));
+  return alerts.map((alert) => mapAlertToIncident(alert));
 }
 
 export async function getIncidentById(id, baseUrl) {
@@ -126,8 +138,7 @@ export async function getIncidentById(id, baseUrl) {
     return null;
   }
   
-  const url = toUrl(baseUrl, `/api/alerts/by-incident/${id}`);
-  const alert = await request(url, { method: 'GET' });
+  const alert = await get(baseUrl, `/api/alerts/by-incident/${id}`);
   
   // Map alert to incident format, ensuring all backend fields are included
   if (!alert) return null;
@@ -160,35 +171,19 @@ export async function getIncidentById(id, baseUrl) {
 }
 
 export async function postIncidentAction(id, body, baseUrl) {
-  const url = toUrl(baseUrl, `/incidents/${id}/actions`);
-  return request(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify(body),
-  });
+  return post(baseUrl, `/incidents/${id}/actions`, body);
 }
 
 export async function postIncidentFromPacket(packetId, reason, severity, baseUrl) {
-  const url = toUrl(baseUrl, '/incidents/from-packet');
-  return request(url, {
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({ packetId, reason, severity }),
-  });
+  return post(baseUrl, '/incidents/from-packet', { packetId, reason, severity });
 }
 
 export async function postIncidentWarRoom(id, baseUrl) {
   // Create a meeting using the new simplified format (no dates needed)
-  const url = toUrl(baseUrl, '/api/meetings');
-  
-  return request(url, { 
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({
-      title: `Reunión para Incidente ${id}`,
-      description: `Coordinación y respuesta para incidente ${id}`,
-      incidentId: id
-    })
+  return post(baseUrl, '/api/meetings', {
+    title: `Reunión para Incidente ${id}`,
+    description: `Coordinación y respuesta para incidente ${id}`,
+    incidentId: id
   });
 }
 
@@ -196,18 +191,12 @@ export async function postIncidentWarRoom(id, baseUrl) {
 
 export async function getMeetingDetails(meetingId, baseUrl) {
   // Get full meeting details including participants, status, etc.
-  const url = toUrl(baseUrl, `/api/meetings/${meetingId}`);
-  return request(url, { method: 'GET' });
+  return get(baseUrl, `/api/meetings/${meetingId}`);
 }
 
 export async function joinMeeting(code, baseUrl) {
   // Join an existing meeting using the meeting code
-  const url = toUrl(baseUrl, '/api/meetings/join');
-  return request(url, { 
-    method: 'POST',
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify({ code })
-  });
+  return post(baseUrl, '/api/meetings/join', { code });
 }
 
 export async function getWarRoomMessages(warRoomId, baseUrl) {
@@ -216,8 +205,7 @@ export async function getWarRoomMessages(warRoomId, baseUrl) {
 
 export async function leaveMeeting(meetingId, baseUrl) {
   // Leave an existing meeting
-  const url = toUrl(baseUrl, `/api/meetings/${meetingId}/leave`);
-  return request(url, { method: 'POST' });
+  return post(baseUrl, `/api/meetings/${meetingId}/leave`);
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {
@@ -230,63 +218,41 @@ export async function postWarRoomMessage(warRoomId, message, baseUrl) {
 // --- Tráfico --------------------------------------------------------------
 
 export async function getTrafficRecent({ since, limit } = {}, baseUrl) {
-  const url = toUrl(baseUrl, '/traffic/recent', { since, limit });
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/traffic/recent', { since, limit });
 }
 
 export async function getTrafficPacketById(packetId, baseUrl) {
-  const url = toUrl(baseUrl, `/traffic/packets/${packetId}`);
-  return request(url, { method: 'GET' });
+  return get(baseUrl, `/traffic/packets/${packetId}`);
 }
 
 // --- Alertas (métricas) ---
 
 export async function getAlertsCount(baseUrl) {
-  const url = toUrl(baseUrl, '/api/alerts/count');
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/api/alerts/count');
 }
 
 export async function getAlertsBySeverity(baseUrl) {
-  const url = toUrl(baseUrl, '/api/alerts/count/by-severity');
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/api/alerts/count/by-severity');
 }
 
 export async function getAlertsToday(baseUrl) {
-  const url = toUrl(baseUrl, '/api/alerts/today');
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/api/alerts/today');
 }
 
 export async function getAlertsTodayCount(baseUrl) {
-  const url = toUrl(baseUrl, '/api/alerts/today/count');
-  return request(url, { method: 'GET' });
+  return get(baseUrl, '/api/alerts/today/count');
 }
 
 export async function getResolvedIncidents(baseUrl) {
-  const url = toUrl(baseUrl, '/api/alerts/resolved');
-  const alerts = await request(url, { method: 'GET' });
+  const alerts = await get(baseUrl, '/api/alerts/resolved');
   
   // Convert alerts to incident format
   if (!Array.isArray(alerts)) return [];
-  return alerts.map((alert) => ({
-    id: alert.incidentId || `alert-${alert.id}`,
-    source: alert.packetId,
-    severity: alert.severity,
-    createdAt: alert.timestamp,
-    detection: {
-      model_version: alert.modelVersion || alert.model_version,
-      model_score: alert.score,
-    },
-    status: 'contenido',  // Status for resolved incidents
-    type: 'alert',
-    linkedPacketId: alert.packetId,
-    _alertId: alert.id,
-    warRoomId: alert.warRoomId,
-  }));
+  return alerts.map((alert) => mapAlertToIncident(alert, { status: 'contenido' }));
 }
 
 export async function markIncidentAsResolved(meetingId, baseUrl) {
-  const url = toUrl(baseUrl, `/api/meetings/${meetingId}/mark-as-resolved`);
-  return request(url, { method: 'POST' });
+  return post(baseUrl, `/api/meetings/${meetingId}/mark-as-resolved`);
 }
 
 // --- WebSocket ------------------------------------------------------------
