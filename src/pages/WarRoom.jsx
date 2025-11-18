@@ -7,9 +7,23 @@ import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
+// Helper functions
 const formatTimestamp = (value) => {
   if (!value) return '';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatDuration = (seconds) => {
+  if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
+  
+  const numSeconds = Number(seconds);
+  if (Number.isNaN(numSeconds)) return '00:00:00';
+  
+  const hours = Math.floor(numSeconds / 3600);
+  const minutes = Math.floor((numSeconds % 3600) / 60);
+  const remainingSeconds = numSeconds % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 function isAdmin(user) {
@@ -71,20 +85,6 @@ function WarRoom({ params }) {
     if (warRoomId?.startsWith('WR-')) return warRoomId.substring(3);
     return warRoomId;
   }, [warRoom, warRoomId]);
-
-  // Función para formatear duración en MM:SS
-  const formatDuration = (seconds) => {
-    if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
-    
-    const numSeconds = Number(seconds);
-    if (Number.isNaN(numSeconds)) return '00:00:00';
-    
-    const hours = Math.floor(numSeconds / 3600);
-    const minutes = Math.floor((numSeconds % 3600) / 60);
-    const remainingSeconds = numSeconds % 60;
-    
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
 
   // Efecto para calcular la duración en tiempo real
   useEffect(() => {
@@ -324,28 +324,7 @@ function WarRoom({ params }) {
       if (sidebarButton && navLabel?.textContent === 'Dashboard') {
         event.preventDefault();
         event.stopPropagation();
-        
-        // Mostrar overlay de salida
-        setLoadingOverlay({
-          isVisible: true,
-          title: '🚪 Saliendo de la reunión',
-          description: 'Finalizando sesión de mesa de trabajo...',
-          icon: '👋'
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        
-        setLoadingOverlay({
-          isVisible: true,
-          title: '📊 Regresando al Dashboard',
-          description: 'Cargando vista principal...',
-          icon: '🏠'
-        });
-        
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-        navigate(getRouteHash('dashboard'));
+        await showNavigationOverlay(getRouteHash('dashboard'));
       }
     };
 
@@ -498,8 +477,8 @@ function WarRoom({ params }) {
     }
   };
 
-  // Función para salir a Dashboard con overlay
-  const handleExitToDashboard = async () => {
+  // Helper to show loading overlay sequence for navigation
+  const showNavigationOverlay = async (exitRoute) => {
     setLoadingOverlay({
       isVisible: true,
       title: '🚪 Saliendo de la reunión',
@@ -507,20 +486,25 @@ function WarRoom({ params }) {
       icon: '👋'
     });
 
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    setLoadingOverlay({
+      isVisible: true,
+      title: '📊 Regresando al Dashboard',
+      description: 'Cargando vista principal...',
+      icon: '🏠'
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+    navigate(exitRoute);
+  };
+
+  // Función para salir a Dashboard con overlay
+  const handleExitToDashboard = async () => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      setLoadingOverlay({
-        isVisible: true,
-        title: '📊 Regresando al Dashboard',
-        description: 'Cargando vista principal...',
-        icon: '🏠'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      navigate(getRouteHash('dashboard'));
+      await showNavigationOverlay(getRouteHash('dashboard'));
     } catch (error) {
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
