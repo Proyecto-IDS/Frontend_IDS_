@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', description: 'Resumen de incidentes', adminOnly: false },
@@ -68,5 +69,22 @@ const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNaviga
     </aside>
   );
 });
+
+Sidebar.propTypes = {
+  collapsed: PropTypes.bool,
+  onToggle: PropTypes.func.isRequired,
+  activeKey: PropTypes.string,
+  onNavigate: PropTypes.func,
+  user: PropTypes.shape({
+    role: PropTypes.string,
+    authorities: PropTypes.arrayOf(
+      PropTypes.oneOfType([
+        PropTypes.string,
+        PropTypes.shape({ authority: PropTypes.string })
+      ])
+    ),
+  }),
+  hideSettings: PropTypes.bool,
+};
 
 export default Sidebar;
