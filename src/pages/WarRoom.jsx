@@ -26,25 +26,24 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
+const getStatusLabel = (status) => {
+  if (status === 'ACTIVE') return 'Activa';
+  if (status === 'RESOLVED' || status === 'ENDED') return 'Resuelta';
+  return status;
+};
+
+const isAdminRole = (value) => {
+  if (!value) return false;
+  const str = typeof value === 'string' ? value : value?.authority || '';
+  return str === 'ROLE_ADMIN' || str === 'ADMIN' || str === 'admin';
+};
+
 function isAdmin(user) {
   if (!user) return false;
-  const role = user.role;
-  const authorities = user.authorities;
   
-  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
-    return true;
-  }
-  
-  if (Array.isArray(authorities)) {
-    return authorities.some(auth => {
-      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
-      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
-    });
-  }
-  
-  if (Array.isArray(user.roles)) {
-    return user.roles.some(r => r === 'ROLE_ADMIN' || r === 'ADMIN' || r === 'admin');
-  }
+  if (isAdminRole(user.role)) return true;
+  if (Array.isArray(user.authorities) && user.authorities.some(isAdminRole)) return true;
+  if (Array.isArray(user.roles) && user.roles.some(isAdminRole)) return true;
   
   return false;
 }
@@ -212,41 +211,35 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
+    const isWarRoomMatch = (payloadId) => {
+      return payloadId === warRoomId || payloadId === Number(warRoomId);
+    };
+    
     const handleWebSocketEvent = (eventType, payload) => {
-
-      
       // Handle warroom participant updates
-      if (eventType === 'warroom.participants' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-        // Refresh the war room data to get updated participant list
+      if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
         openWarRoom(incidentId);
       }
       
       // Handle warroom duration updates
-      if (eventType === 'warroom.duration' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-
-        // The duration will be handled by the global state management
+      if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
         openWarRoom(incidentId);
       }
       
       // Handle warroom resolution events
-      if (eventType === 'warroom.resolved' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-
-        
-        // Show notification that incident was resolved
+      if (eventType === 'warroom.resolved' && isWarRoomMatch(payload.warRoomId)) {
         addToast({
           title: 'Incidente resuelto ✅',
           description: 'La reunión ha finalizado exitosamente.',
           tone: 'success',
         });
         
-        // Redirect all users to the incident detail page (no delay needed)
         const hash = getRouteHash('incident-detail', { id: incidentId });
         navigate(hash);
       }
       
       // Handle new messages (if implemented in backend)
-      if (eventType === 'warroom.message' && payload.warRoomId === warRoomId) {
-        // Refresh messages
+      if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
         loadWarRoomMessages(warRoomId);
       }
     };
@@ -561,17 +554,9 @@ function WarRoom({ params }) {
                 <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
               </>
             )}
-            {warRoom.status && (() => {
-              let statusLabel = warRoom.status;
-              if (warRoom.status === 'ACTIVE') {
-                statusLabel = 'Activa';
-              } else if (warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') {
-                statusLabel = 'Resuelta';
-              }
-              return (
-                <span style={{ marginLeft: '1em' }}>Estado: <strong>{statusLabel}</strong></span>
-              );
-            })()}
+            {warRoom.status && (
+              <span style={{ marginLeft: '1em' }}>Estado: <strong>{getStatusLabel(warRoom.status)}</strong></span>
+            )}
           </div>
           
           {/* Cronómetro en tiempo real para reuniones activas */}
