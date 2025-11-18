@@ -35,6 +35,38 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper: Render action buttons based on incident status
+const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) => {
+  if (incident.status === 'contenido') {
+    return null;
+  }
+
+  return (
+    <>
+      {incident.status === 'conocido' && (
+        <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
+          Ver solución aplicada
+        </button>
+      )}
+      {incident.status === 'falso-positivo' && (
+        <>
+          <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
+            Cerrar como FP
+          </button>
+          <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
+            Escalar a no-conocido
+          </button>
+        </>
+      )}
+      {incident.status === 'conocido' && (
+        <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
+          Registrar nota
+        </button>
+      )}
+    </>
+  );
+};
+
 function IncidentDetail({ params }) {
   const { id } = params;
   const { selectedIncident, loading, auth, warRooms } = useAppState();
@@ -140,36 +172,7 @@ function IncidentDetail({ params }) {
           <button type="button" className="btn subtle" onClick={() => navigate(getRouteHash('dashboard'))}>
             Volver
           </button>
-          {/* Si el incidente está contenido, no mostrar ninguna acción adicional */}
-          {incident.status === 'contenido' ? (
-            // No mostrar botones adicionales para incidentes contenidos
-            null
-          ) : (
-            // Mostrar acciones normales solo si NO está contenido
-            <>
-              {incident.status === 'conocido' && (
-                <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
-                  Ver solución aplicada
-                </button>
-              )}
-              {/* Botones de reunión eliminados para incidentes no-conocidos */}
-              {incident.status === 'falso-positivo' && (
-                <>
-                  <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
-                    Cerrar como FP
-                  </button>
-                  <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
-                    Escalar a no-conocido
-                  </button>
-                </>
-              )}
-              {incident.status === 'conocido' && (
-                <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
-                  Registrar nota
-                </button>
-              )}
-            </>
-          )}
+          {renderActionButtons(incident, setSolutionOpen, setConfirm, addToast)}
         </div>
       </header>
 
