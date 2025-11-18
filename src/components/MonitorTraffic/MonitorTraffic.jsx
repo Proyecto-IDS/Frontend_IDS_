@@ -145,60 +145,6 @@ function MonitorTrafficLive() {
     
   }, [selectedPacket, setTrafficIpFilter]);
 
-  const handleStreamEvent = useCallback(
-    (type, payload) => {
-      if (!type) return;
-      
-      switch (type) {
-        case 'packet_batch':
-          const packets = payload?.packets || [];
-          if (packets.length > 0) {
-            appendTrafficBatch(packets);
-          }
-          break;
-        case 'batch':
-          if (Array.isArray(payload?.packets)) {
-            appendTrafficBatch(payload.packets);
-          }
-          break;
-        case 'packet':
-          if (payload?.packet) {
-            appendTrafficBatch([payload.packet]);
-          }
-          break;
-        case 'alert':
-          if (payload?.alert) {
-            const { packetId, incidentId, severity, score, model_version: modelVersion } = payload.alert;
-            linkPacketToIncident(packetId, incidentId, severity);
-            addToast({
-              title: `Alerta ${severity || 'alta'}`,
-              description: incidentId
-                ? `Paquete vinculado a ${incidentId}. Score ${score ?? '—'}`
-                : `Score ${score ?? '—'}${modelVersion ? ` · Modelo ${modelVersion}` : ''}`,
-              tone: severity === 'critical' ? 'danger' : 'warn',
-            });
-          }
-          break;
-        case 'ml_status':
-          if (payload) {
-            const { status, streak, since } = payload;
-            addToast({
-              title: status === 'degraded' ? 'ML degradado' : 'ML recuperado',
-              description:
-                status === 'degraded'
-                  ? `ML degradado (streak=${streak || 0}). Operando en fallback.`
-                  : 'ML recuperado. Volvemos a inferencias en vivo.',
-              tone: status === 'degraded' ? 'warn' : 'success',
-            });
-          }
-          break;
-        default:
-          break;
-      }
-    },
-    [appendTrafficBatch, linkPacketToIncident, addToast],
-  );
-
   const destroyConnections = useCallback(() => {
     if (socketRef.current) {
       socketRef.current.close?.();
