@@ -35,6 +35,27 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper function to compute participant count
+const getParticipantCount = (warRoomState, isResolved) => {
+  if (isResolved) {
+    if (warRoomState?.maxParticipantCount !== undefined) {
+      return warRoomState.maxParticipantCount;
+    }
+    if (Array.isArray(warRoomState?.participantEmails)) {
+      return warRoomState.participantEmails.length;
+    }
+    return '—';
+  }
+  
+  if (warRoomState?.currentParticipantCount !== undefined) {
+    return warRoomState.currentParticipantCount;
+  }
+  if (Array.isArray(warRoomState?.participantEmails)) {
+    return warRoomState.participantEmails.length;
+  }
+  return '—';
+};
+
 // Helper: Render action buttons based on incident status
 const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) => {
   if (incident.status === 'contenido') {
@@ -199,9 +220,7 @@ function IncidentDetail({ params }) {
               <div className="meeting-info-item">
                 <span className="meeting-info-label">Participantes{incident.status !== 'contenido' ? ' actuales' : ''}</span>
                 <span className="meeting-info-value">
-                  {incident.status === 'contenido'
-                    ? (warRoomState?.maxParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))
-                    : (warRoomState?.currentParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))}
+                  {getParticipantCount(warRoomState, incident.status === 'contenido')}
                 </span>
               </div>
               <div className="meeting-info-item">
