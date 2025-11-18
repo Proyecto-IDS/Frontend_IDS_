@@ -330,7 +330,7 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
         const payload = JSON.parse(event.data);
         if (payload?.type) onEvent?.(payload.type, payload);
       } catch (error) {
-        // Parse error - ignore
+        console.warn('WebSocket: Failed to parse message:', error.message);
       }
     });
 
