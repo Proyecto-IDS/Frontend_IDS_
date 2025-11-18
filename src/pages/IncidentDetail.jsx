@@ -272,7 +272,7 @@ function IncidentDetail({ params }) {
 
       {incident.status === 'contenido' ? (
         <section>
-          <div className="resolved-banner" role="status" aria-live="polite">
+          <output className="resolved-banner" aria-live="polite">
             <div className="resolved-banner-header">
               <div className="resolved-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -293,7 +293,7 @@ function IncidentDetail({ params }) {
                 <div className="resolved-banner-time-label">TIEMPO DE RESOLUCIÓN</div>
               </div>
             )}
-          </div>
+          </output>
         </section>
       ) : (
         <section className="panel">
