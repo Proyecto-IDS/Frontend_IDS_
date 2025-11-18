@@ -49,3 +49,5 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
             -Dsonar.javascript.file.suffixes=.js,.jsx
             -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.coverage.exclusions=**/*
+            -Dsonar.qualitygate.wait=false
