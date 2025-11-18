@@ -95,8 +95,6 @@ function IncidentDetail({ params }) {
     return null;
   }, [id, selectedIncident]);
 
-  const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
-
   const warRoomState = useMemo(() => {
     if (!incident?.warRoomId) return null;
     return warRooms?.[incident.warRoomId] || null;
@@ -111,18 +109,6 @@ function IncidentDetail({ params }) {
     return null;
   }, [incident?.warRoomStartTime, incident?.warRoomDuration]);
 
-  const handleOpenWarRoom = async () => {
-    try {
-      const warRoom = await openWarRoom(id);
-      const warRoomId = warRoom?.id || warRoom?.warRoomId;
-      if (warRoomId) {
-        const hash = getRouteHash('war-room', { id: warRoomId });
-        navigate(hash);
-      }
-    } catch (error) {
-      // Error handling
-    }
-  };
 
   const handleConfirmAction = async () => {
     if (!confirm) return;
