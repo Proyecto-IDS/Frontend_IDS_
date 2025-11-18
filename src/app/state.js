@@ -775,30 +775,42 @@ export function AppProvider({ children }) {
       return payload;
     };
 
+    // Helper: merge API and WebSocket incidents
+    const mergeIncidents = (apiIncidents, existingIncidents) => {
+      const apiAlerts = apiIncidents.map(incident => ({
+        ...incident,
+        type: 'alert',
+        _from: 'api'
+      }));
+      
+      const wsOnlyAlerts = existingIncidents.filter(inc => 
+        inc.type === 'alert' && 
+        inc._from === 'websocket' && 
+        !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
+      );
+      
+      return [...apiAlerts, ...wsOnlyAlerts];
+    };
+
+    // Helper: try fallback incidents load
+    const tryFallbackIncidents = async (filters, existingIncidents) => {
+      if (USE_MOCKS) return [];
+      
+      try {
+        const fallback = await getIncidents(filters, '');
+        const merged = mergeIncidents(fallback, existingIncidents);
+        dispatch({ type: 'incidents/loaded', payload: merged });
+        return merged;
+      } catch (fallbackError) {
+        return [];
+      }
+    };
+
     const loadIncidents = async (filters = {}) => {
       dispatch({ type: 'incidents/loading', payload: true });
       try {
         const incidents = await getIncidents(filters, state.settings.apiBaseUrl);
-        
-        // Mark API incidents as alerts for proper tracking
-        const apiAlerts = incidents.map(incident => ({
-          ...incident,
-          type: 'alert',
-          _from: 'api'
-        }));
-        
-        // Get existing WebSocket alerts that haven't been loaded from API yet
-        const wsOnlyAlerts = state.incidents.filter(inc => 
-          inc.type === 'alert' && 
-          inc._from === 'websocket' && 
-          !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
-        );
-        
-        // Combine: API alerts first (most recent from DB), then WebSocket-only alerts
-        const merged = [
-          ...apiAlerts,
-          ...wsOnlyAlerts
-        ];
+        const merged = mergeIncidents(incidents, state.incidents);
         
         dispatch({ type: 'incidents/loaded', payload: merged });
         incidents.forEach((incident) => {
@@ -812,32 +824,24 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente más tarde.',
           tone: 'danger',
         });
-        if (!USE_MOCKS) {
-          try {
-            const fallback = await getIncidents(filters, '');
-            const apiAlerts = fallback.map(incident => ({
-              ...incident,
-              type: 'alert',
-              _from: 'api'
-            }));
-            const wsOnlyAlerts = state.incidents.filter(inc => 
-              inc.type === 'alert' && 
-              inc._from === 'websocket' && 
-              !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
-            );
-            const merged = [
-              ...apiAlerts,
-              ...wsOnlyAlerts
-            ];
-            dispatch({ type: 'incidents/loaded', payload: merged });
-            return merged;
-          } catch (fallbackError) {
-            // Fallback failed
-          }
-        }
-        return [];
+        
+        return await tryFallbackIncidents(filters, state.incidents);
       } finally {
         dispatch({ type: 'incidents/loading', payload: false });
+      }
+    };
+
+    // Helper: try fallback incident load
+    const tryFallbackIncident = async (id) => {
+      if (USE_MOCKS) return null;
+      
+      try {
+        const fallback = await getIncidentById(id, '');
+        cacheRef.current.incidentDetails.set(id, fallback);
+        dispatch({ type: 'incident/loaded', payload: fallback });
+        return fallback;
+      } catch (fallbackError) {
+        return null;
       }
     };
 
@@ -859,17 +863,8 @@ export function AppProvider({ children }) {
           description: error.message || 'Revisa la conexión al backend.',
           tone: 'danger',
         });
-        if (!USE_MOCKS) {
-          try {
-            const fallback = await getIncidentById(id, '');
-            cacheRef.current.incidentDetails.set(id, fallback);
-            dispatch({ type: 'incident/loaded', payload: fallback });
-            return fallback;
-          } catch (fallbackError) {
-            // Fallback failed
-          }
-        }
-        return null;
+        
+        return await tryFallbackIncident(id);
       } finally {
         dispatch({ type: 'incident/loading', payload: false });
       }
