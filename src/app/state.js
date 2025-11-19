@@ -1108,8 +1108,8 @@ export function AppProvider({ children }) {
           // Non-enumerable flag to minimize pollution; log if tagging fails
           try {
             Object.defineProperty(error, '_warRoomJoinLogged', { value: true, enumerable: false });
-          } catch (defineErr) {
-            console.warn('[state] Failed to mark join error as logged:', defineErr?.message);
+          } catch (error_) {
+            console.warn('[state] Failed to mark join error as logged:', error_?.message);
           }
         }
         throw error; 
