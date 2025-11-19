@@ -1101,8 +1101,14 @@ export function AppProvider({ children }) {
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
       } catch (error) {
-        // Error handling - let the calling component show the toast
-        throw error;
+        // Add logging & classification
+        console.warn('[state] Failed to join war room:', error?.message);
+        // Flag error as already logged so caller can avoid duplicate toasts
+        if (error && typeof error === 'object') {
+          // Non-enumerable flag to minimize pollution
+          try { Object.defineProperty(error, '_warRoomJoinLogged', { value: true, enumerable: false }); } catch(_) {}
+        }
+        throw error; 
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
       }
