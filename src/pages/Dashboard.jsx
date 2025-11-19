@@ -467,15 +467,17 @@ function Dashboard() {
         navigate(getRouteHash('war-room', { id: warRoomId }));
       }
     } catch (error) {
-      // Error handling - remove loading state
+      console.warn('[dashboard] Error creando reunión de emergencia:', error?.message);
+      // Remove loading state without unused destructuring variable
       setMeetingActions(prev => {
-        const { [incidentId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[incidentId];
         return rest;
       });
-      
+
       // Hide overlay and show error
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      
+
       addToast({
         title: '❌ Error al crear reunión',
         description: 'No se pudo crear la mesa de trabajo. Intenta nuevamente.',
@@ -522,15 +524,17 @@ function Dashboard() {
       
       navigate(getRouteHash('war-room', { id: warRoomId }));
     } catch (error) {
-      // Error handling - remove loading state
+      console.warn('[dashboard] Error uniéndose a reunión:', error?.message);
+      // Remove loading state without unused destructuring variable
       setMeetingActions(prev => {
-        const { [`join-${warRoomId}`]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[`join-${warRoomId}`];
         return rest;
       });
-      
+
       // Hide overlay and show error
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      
+
       addToast({
         title: '❌ Error al unirse',
         description: 'No se pudo acceder a la reunión. Intenta nuevamente.',
