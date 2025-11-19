@@ -53,9 +53,10 @@ const defaultSettings = {
 };
 
 function loadStoredSettings() {
-  if (typeof window === 'undefined') return defaultSettings;
+  // Prefer globalThis over window for SSR safety
+  if (!globalThis?.localStorage) return defaultSettings;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = globalThis.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultSettings;
     const parsed = JSON.parse(raw);
     const merged = { ...defaultSettings, ...parsed };
@@ -78,11 +79,11 @@ function loadStoredSettings() {
 }
 
 function loadStoredAuth() {
-  if (typeof window === 'undefined') {
+  if (!globalThis?.localStorage) {
     return { token: null, user: null };
   }
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = globalThis.localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) {
       return { token: null, user: null };
     }
@@ -109,13 +110,12 @@ function loadStoredAuth() {
 }
 
 const persistAuthState = (authState) => {
-  if (typeof window === 'undefined') return;
+  if (!globalThis?.localStorage) return;
   try {
-    // Store only the token directly, no JSON structure
     if (authState.token) {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, authState.token);
+      globalThis.localStorage.setItem(AUTH_STORAGE_KEY, authState.token);
     } else {
-      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (error) {
     // Failed to persist
@@ -123,9 +123,9 @@ const persistAuthState = (authState) => {
 };
 
 const clearAuthState = () => {
-  if (typeof window === 'undefined') return;
+  if (!globalThis?.localStorage) return;
   try {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch (error) {
     // Failed to clear
   }
@@ -530,7 +530,7 @@ export function AppProvider({ children }) {
     const showToast = (title, description, tone) => {
       const id = crypto.randomUUID();
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
-      window.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
+      globalThis.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
     };
 
     // Helper: determine severity tone
@@ -755,7 +755,7 @@ export function AppProvider({ children }) {
     const addToast = ({ title, description, tone = 'info' }) => {
       const id = crypto.randomUUID();
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
-      window.setTimeout(() => dismissToast(id), 4000);
+      globalThis.setTimeout(() => dismissToast(id), 4000);
     };
 
     const handleAuthSuccess = (token, user, toastOptions) => {
@@ -1171,8 +1171,8 @@ export function AppProvider({ children }) {
         ...updates,
         apiBaseUrl: normalizeBaseUrl(updates.apiBaseUrl) || DEFAULT_API_BASE_URL,
       };
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      if (globalThis?.localStorage) {
+        globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       }
       dispatch({ type: 'settings/saved', payload: next });
       addToast({
@@ -1319,9 +1319,9 @@ export function AppProvider({ children }) {
           tone: 'info',
         });
         // Redirigir al login después de cerrar sesión
-        if (typeof window !== 'undefined') {
-          window.setTimeout(() => {
-            window.location.hash = '#/login';
+        if (globalThis?.location) {
+          globalThis.setTimeout(() => {
+            globalThis.location.hash = '#/login';
           }, 100);
         }
       }

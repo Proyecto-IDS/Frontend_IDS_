@@ -135,8 +135,8 @@ function Dashboard() {
   // Apply filters when they change (only if authenticated)
   useEffect(() => {
     if (!auth?.token) return;
-    const timeoutId = window.setTimeout(loadFilteredIncidents, 250);
-    return () => window.clearTimeout(timeoutId);
+    const timeoutId = globalThis.setTimeout(loadFilteredIncidents, 250);
+    return () => globalThis.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, auth?.token]);
 

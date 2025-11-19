@@ -264,8 +264,8 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!warRoomId) return;
     loadWarRoomMessages(warRoomId);
-    const interval = window.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
-    return () => window.clearInterval(interval);
+    const interval = globalThis.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
+    return () => globalThis.clearInterval(interval);
   }, [warRoomId, loadWarRoomMessages]);
 
   useEffect(() => {
@@ -277,13 +277,15 @@ function WarRoom({ params }) {
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
     const disableBackButton = () => {
-      // Agregar una entrada al historial para bloquear el back
-      window.history.pushState(null, null, window.location.pathname);
+      if (globalThis.history && globalThis.location) {
+        globalThis.history.pushState(null, null, globalThis.location.pathname);
+      }
     };
 
     const handlePopState = (event) => {
-      // Bloquear la navegación hacia atrás
-      window.history.pushState(null, null, window.location.pathname);
+      if (globalThis.history && globalThis.location) {
+        globalThis.history.pushState(null, null, globalThis.location.pathname);
+      }
       
       // Mostrar mensaje opcional (puedes comentar esto si no quieres el toast)
       // addToast({
@@ -297,10 +299,10 @@ function WarRoom({ params }) {
     disableBackButton();
     
     // Escuchar intentos de navegación hacia atrás
-    window.addEventListener('popstate', handlePopState);
+    globalThis.addEventListener('popstate', handlePopState);
 
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      globalThis.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
@@ -394,14 +396,14 @@ function WarRoom({ params }) {
 
     // Agregar listeners
     document.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('unload', handleUnload);
+    globalThis.addEventListener('beforeunload', handleBeforeUnload);
+    globalThis.addEventListener('unload', handleUnload);
 
     return () => {
       // Cleanup
       document.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('unload', handleUnload);
+      globalThis.removeEventListener('beforeunload', handleBeforeUnload);
+      globalThis.removeEventListener('unload', handleUnload);
     };
   }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
 
