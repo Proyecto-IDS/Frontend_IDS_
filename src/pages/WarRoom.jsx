@@ -287,12 +287,6 @@ function WarRoom({ params }) {
         event.preventDefault();
       }
       disableBackButton();
-      
-      // addToast({
-      //   title: '🚫 Navegación bloqueada',
-      //   description: 'Usa el botón "Dashboard" para salir de la reunión.',
-      //   tone: 'warning'
-      // });
     };
 
     // Bloquear inmediatamente al entrar
