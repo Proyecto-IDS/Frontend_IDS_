@@ -283,11 +283,11 @@ function WarRoom({ params }) {
     };
 
     const handlePopState = (event) => {
-      if (globalThis.history && globalThis.location) {
-        globalThis.history.pushState(null, null, globalThis.location.pathname);
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
       }
+      disableBackButton();
       
-      // Mostrar mensaje opcional (puedes comentar esto si no quieres el toast)
       // addToast({
       //   title: '🚫 Navegación bloqueada',
       //   description: 'Usa el botón "Dashboard" para salir de la reunión.',
