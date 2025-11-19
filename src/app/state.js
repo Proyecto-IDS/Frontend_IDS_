@@ -74,6 +74,7 @@ function loadStoredSettings() {
     }
     return merged;
   } catch (error) {
+    console.warn('[state] Failed to load stored settings, using defaults:', error?.message);
     return defaultSettings;
   }
 }
@@ -103,6 +104,7 @@ function loadStoredAuth() {
     // Treat as direct token string
     return { token: raw, user: null };
   } catch (error) {
+    console.warn('[state] Failed to load stored auth, clearing token:', error?.message);
     return { token: null, user: null };
   }
 }
@@ -797,6 +799,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'incidents/loaded', payload: merged });
         return merged;
       } catch (fallbackError) {
+        console.warn('[state] Fallback incidents load failed:', fallbackError?.message);
         return [];
       }
     };
@@ -836,6 +839,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'incident/loaded', payload: fallback });
         return fallback;
       } catch (fallbackError) {
+        console.warn('[state] Fallback incident load failed:', fallbackError?.message);
         return null;
       }
     };
@@ -919,7 +923,7 @@ export function AppProvider({ children }) {
             dispatch({ type: 'incident/updated', payload: { incident: fallback } });
             return fallback;
           } catch (fallbackError) {
-            // Fallback failed
+            console.warn('[state] Fallback incident status update failed:', fallbackError?.message);
           }
         }
         throw error;
@@ -952,6 +956,7 @@ export function AppProvider({ children }) {
           ...meetingDetails
         };
       } catch (detailsError) {
+        console.warn('[state] Failed to fetch existing meeting details:', detailsError?.message);
         return null;
       }
     };
@@ -961,6 +966,7 @@ export function AppProvider({ children }) {
       try {
         return await getMeetingDetails(meetingId, state.settings.apiBaseUrl);
       } catch (detailsError) {
+        console.warn('[state] Failed to fetch full meeting details:', detailsError?.message);
         return null;
       }
     };
