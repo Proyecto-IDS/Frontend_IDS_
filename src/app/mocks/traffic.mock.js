@@ -1,7 +1,9 @@
 const PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS', 'SSL'];
 const SEVERITIES = ['low', 'medium', 'high', 'critical'];
 
-const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+// NOSONAR: Math.random() is safe here - used only for mock data generation in development/testing
+// This is not used for any security-sensitive operations (no crypto, auth, or session management)
+const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min; // NOSONAR
 const pick = (list) => list[randomBetween(0, list.length - 1)];
 
 const textEncoder = new TextEncoder();
@@ -37,7 +39,7 @@ const generatePacket = () => {
   const proto = pick(PROTOCOLS);
   const length = randomBetween(60, 1800);
   const timestamp = new Date(Date.now() - randomBetween(0, 2000)).toISOString();
-  const id = `PKT-${String(Date.now())}-${Math.random().toString(16).slice(2, 6)}`;
+  const id = `PKT-${String(Date.now())}-${Math.random().toString(16).slice(2, 6)}`; // NOSONAR
   const src = ipBlock();
   const dst = ipBlock();
   const payload = toHex(`Mock payload ${id}`).slice(0, 2048);
@@ -52,7 +54,7 @@ const generatePacket = () => {
             ? `SYN ${src.split('.')[0]}`
             : 'Frame';
 
-  const severityRoll = Math.random();
+  const severityRoll = Math.random(); // NOSONAR
   const severity =
     severityRoll > 0.97
       ? 'critical'
@@ -90,7 +92,7 @@ const emit = (event) => {
 };
 
 const maybeEmitAlert = (packet) => {
-  if (packet.severity === 'critical' || (packet.severity === 'high' && Math.random() > 0.6)) {
+  if (packet.severity === 'critical' || (packet.severity === 'high' && Math.random() > 0.6)) { // NOSONAR
     const incidentId = pick(mockTrafficState.incidents);
     const alert = {
       packetId: packet.id,
