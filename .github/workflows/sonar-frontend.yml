@@ -59,8 +59,8 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.projectKey=CARDAV-45_Clone-Frontend
-            -Dsonar.organization=cardav-45
+            -Dsonar.projectKey=Proyecto-IDS_Frontend_IDS_
+            -Dsonar.organization=proyecto-ids
             -Dsonar.sources=src
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
             -Dsonar.javascript.file.suffixes=.js,.jsx
