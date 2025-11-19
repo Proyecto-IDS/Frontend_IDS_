@@ -1105,8 +1105,12 @@ export function AppProvider({ children }) {
         console.warn('[state] Failed to join war room:', error?.message);
         // Flag error as already logged so caller can avoid duplicate toasts
         if (error && typeof error === 'object') {
-          // Non-enumerable flag to minimize pollution
-          try { Object.defineProperty(error, '_warRoomJoinLogged', { value: true, enumerable: false }); } catch(_) {}
+          // Non-enumerable flag to minimize pollution; log if tagging fails
+          try {
+            Object.defineProperty(error, '_warRoomJoinLogged', { value: true, enumerable: false });
+          } catch (defineErr) {
+            console.warn('[state] Failed to mark join error as logged:', defineErr?.message);
+          }
         }
         throw error; 
       } finally {
