@@ -1,4 +1,5 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import './LoadingOverlay.css';
 
 const LoadingOverlay = ({ isVisible, title, description, icon = '🔄' }) => {
@@ -17,6 +18,13 @@ const LoadingOverlay = ({ isVisible, title, description, icon = '🔄' }) => {
       </div>
     </div>
   );
+};
+
+LoadingOverlay.propTypes = {
+  isVisible: PropTypes.bool.isRequired,
+  title: PropTypes.string,
+  description: PropTypes.string,
+  icon: PropTypes.node
 };
 
 export default LoadingOverlay;

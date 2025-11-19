@@ -7,30 +7,43 @@ import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 
+// Helper functions
 const formatTimestamp = (value) => {
   if (!value) return '';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const formatDuration = (seconds) => {
+  if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
+  
+  const numSeconds = Number(seconds);
+  if (Number.isNaN(numSeconds)) return '00:00:00';
+  
+  const hours = Math.floor(numSeconds / 3600);
+  const minutes = Math.floor((numSeconds % 3600) / 60);
+  const remainingSeconds = numSeconds % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+const getStatusLabel = (status) => {
+  if (status === 'ACTIVE') return 'Activa';
+  if (status === 'RESOLVED' || status === 'ENDED') return 'Resuelta';
+  return status;
+};
+
+const isAdminRole = (value) => {
+  if (!value) return false;
+  const str = typeof value === 'string' ? value : value?.authority || '';
+  return str === 'ROLE_ADMIN' || str === 'ADMIN' || str === 'admin';
+};
+
 function isAdmin(user) {
   if (!user) return false;
-  const role = user.role;
-  const authorities = user.authorities;
   
-  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
-    return true;
-  }
-  
-  if (Array.isArray(authorities)) {
-    return authorities.some(auth => {
-      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
-      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
-    });
-  }
-  
-  if (Array.isArray(user.roles)) {
-    return user.roles.some(r => r === 'ROLE_ADMIN' || r === 'ADMIN' || r === 'admin');
-  }
+  if (isAdminRole(user.role)) return true;
+  if (Array.isArray(user.authorities) && user.authorities.some(isAdminRole)) return true;
+  if (Array.isArray(user.roles) && user.roles.some(isAdminRole)) return true;
   
   return false;
 }
@@ -44,7 +57,6 @@ function WarRoom({ params }) {
     openWarRoom,
     loadWarRoomMessages,
     sendWarRoomMessage,
-    updateIncidentStatus,
     updateWarRoomChecklist,
     joinWarRoom,
     leaveWarRoom,
@@ -72,20 +84,6 @@ function WarRoom({ params }) {
     if (warRoomId?.startsWith('WR-')) return warRoomId.substring(3);
     return warRoomId;
   }, [warRoom, warRoomId]);
-
-  // Función para formatear duración en MM:SS
-  const formatDuration = (seconds) => {
-    if (seconds === null || seconds === undefined || seconds < 0) return '00:00:00';
-    
-    const numSeconds = Number(seconds);
-    if (isNaN(numSeconds)) return '00:00:00';
-    
-    const hours = Math.floor(numSeconds / 3600);
-    const minutes = Math.floor((numSeconds % 3600) / 60);
-    const remainingSeconds = numSeconds % 60;
-    
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
 
   // Efecto para calcular la duración en tiempo real
   useEffect(() => {
@@ -205,8 +203,6 @@ function WarRoom({ params }) {
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
         joinedTimeRef.current = null;
-      } else if (hasJoinedRef.current) {
-
       }
     };
   }, [leaveWarRoom]);
@@ -215,41 +211,35 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
+    const isWarRoomMatch = (payloadId) => {
+      return payloadId === warRoomId || payloadId === Number(warRoomId);
+    };
+    
     const handleWebSocketEvent = (eventType, payload) => {
-
-      
       // Handle warroom participant updates
-      if (eventType === 'warroom.participants' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-        // Refresh the war room data to get updated participant list
+      if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
         openWarRoom(incidentId);
       }
       
       // Handle warroom duration updates
-      if (eventType === 'warroom.duration' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-
-        // The duration will be handled by the global state management
+      if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
         openWarRoom(incidentId);
       }
       
       // Handle warroom resolution events
-      if (eventType === 'warroom.resolved' && (payload.warRoomId === warRoomId || payload.warRoomId === Number(warRoomId))) {
-
-        
-        // Show notification that incident was resolved
+      if (eventType === 'warroom.resolved' && isWarRoomMatch(payload.warRoomId)) {
         addToast({
           title: 'Incidente resuelto ✅',
           description: 'La reunión ha finalizado exitosamente.',
           tone: 'success',
         });
         
-        // Redirect all users to the incident detail page (no delay needed)
         const hash = getRouteHash('incident-detail', { id: incidentId });
         navigate(hash);
       }
       
       // Handle new messages (if implemented in backend)
-      if (eventType === 'warroom.message' && payload.warRoomId === warRoomId) {
-        // Refresh messages
+      if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
         loadWarRoomMessages(warRoomId);
       }
     };
@@ -274,8 +264,8 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!warRoomId) return;
     loadWarRoomMessages(warRoomId);
-    const interval = window.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
-    return () => window.clearInterval(interval);
+    const interval = globalThis.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
+    return () => globalThis.clearInterval(interval);
   }, [warRoomId, loadWarRoomMessages]);
 
   useEffect(() => {
@@ -287,30 +277,26 @@ function WarRoom({ params }) {
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
     const disableBackButton = () => {
-      // Agregar una entrada al historial para bloquear el back
-      window.history.pushState(null, null, window.location.pathname);
+      if (globalThis.history && globalThis.location) {
+        globalThis.history.pushState(null, null, globalThis.location.pathname);
+      }
     };
 
     const handlePopState = (event) => {
-      // Bloquear la navegación hacia atrás
-      window.history.pushState(null, null, window.location.pathname);
-      
-      // Mostrar mensaje opcional (puedes comentar esto si no quieres el toast)
-      // addToast({
-      //   title: '🚫 Navegación bloqueada',
-      //   description: 'Usa el botón "Dashboard" para salir de la reunión.',
-      //   tone: 'warning'
-      // });
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      disableBackButton();
     };
 
     // Bloquear inmediatamente al entrar
     disableBackButton();
     
     // Escuchar intentos de navegación hacia atrás
-    window.addEventListener('popstate', handlePopState);
+    globalThis.addEventListener('popstate', handlePopState);
 
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      globalThis.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
@@ -327,28 +313,7 @@ function WarRoom({ params }) {
       if (sidebarButton && navLabel?.textContent === 'Dashboard') {
         event.preventDefault();
         event.stopPropagation();
-        
-        // Mostrar overlay de salida
-        setLoadingOverlay({
-          isVisible: true,
-          title: '🚪 Saliendo de la reunión',
-          description: 'Finalizando sesión de mesa de trabajo...',
-          icon: '👋'
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        
-        setLoadingOverlay({
-          isVisible: true,
-          title: '📊 Regresando al Dashboard',
-          description: 'Cargando vista principal...',
-          icon: '🏠'
-        });
-        
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-        navigate(getRouteHash('dashboard'));
+        await showNavigationOverlay(getRouteHash('dashboard'));
       }
     };
 
@@ -417,22 +382,22 @@ function WarRoom({ params }) {
           hasJoinedRef.current = false;
           meetingIdRef.current = null;
           joinedTimeRef.current = null;
-        } catch (error) {
-          // Ignorar errores durante unload
+        } catch (error_) {
+          console.warn('[WarRoom] Unload leave meeting failed:', error_?.message);
         }
       }
     };
 
     // Agregar listeners
     document.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('unload', handleUnload);
+    globalThis.addEventListener('beforeunload', handleBeforeUnload);
+    globalThis.addEventListener('unload', handleUnload);
 
     return () => {
       // Cleanup
       document.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('unload', handleUnload);
+      globalThis.removeEventListener('beforeunload', handleBeforeUnload);
+      globalThis.removeEventListener('unload', handleUnload);
     };
   }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
 
@@ -501,8 +466,8 @@ function WarRoom({ params }) {
     }
   };
 
-  // Función para salir a Dashboard con overlay
-  const handleExitToDashboard = async () => {
+  // Helper to show loading overlay sequence for navigation
+  const showNavigationOverlay = async (exitRoute) => {
     setLoadingOverlay({
       isVisible: true,
       title: '🚪 Saliendo de la reunión',
@@ -510,21 +475,27 @@ function WarRoom({ params }) {
       icon: '👋'
     });
 
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    setLoadingOverlay({
+      isVisible: true,
+      title: '📊 Regresando al Dashboard',
+      description: 'Cargando vista principal...',
+      icon: '🏠'
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
+    navigate(exitRoute);
+  };
+
+  // Función para salir a Dashboard con overlay
+  const handleExitToDashboard = async () => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      setLoadingOverlay({
-        isVisible: true,
-        title: '📊 Regresando al Dashboard',
-        description: 'Cargando vista principal...',
-        icon: '🏠'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      navigate(getRouteHash('dashboard'));
-    } catch (error) {
+      await showNavigationOverlay(getRouteHash('dashboard'));
+    } catch (error_) {
+      console.warn('[WarRoom] Exit navigation failed:', error_?.message);
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
   };
@@ -566,24 +537,16 @@ function WarRoom({ params }) {
           <div className="war-room-info" style={{ fontSize: '0.9em', marginTop: '0.5em', opacity: 0.8 }}>
             <span>Código: <strong>{warRoom.code}</strong></span>
             {warRoom.startTime && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
             )}
             {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.durationSeconds && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
             )}
             {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.endTime && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
             )}
             {warRoom.status && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Estado: <strong>{warRoom.status === 'ACTIVE' ? 'Activa' : (warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') ? 'Resuelta' : warRoom.status}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Estado: <strong>{getStatusLabel(warRoom.status)}</strong></span>
             )}
           </div>
           
