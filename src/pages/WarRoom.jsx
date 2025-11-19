@@ -382,8 +382,8 @@ function WarRoom({ params }) {
           hasJoinedRef.current = false;
           meetingIdRef.current = null;
           joinedTimeRef.current = null;
-        } catch (error) {
-          // Ignorar errores durante unload
+        } catch (error_) {
+          console.warn('[WarRoom] Unload leave meeting failed:', error_?.message);
         }
       }
     };
@@ -494,7 +494,8 @@ function WarRoom({ params }) {
   const handleExitToDashboard = async () => {
     try {
       await showNavigationOverlay(getRouteHash('dashboard'));
-    } catch (error) {
+    } catch (error_) {
+      console.warn('[WarRoom] Exit navigation failed:', error_?.message);
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
   };
@@ -536,19 +537,13 @@ function WarRoom({ params }) {
           <div className="war-room-info" style={{ fontSize: '0.9em', marginTop: '0.5em', opacity: 0.8 }}>
             <span>Código: <strong>{warRoom.code}</strong></span>
             {warRoom.startTime && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
             )}
             {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.durationSeconds && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
             )}
             {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.endTime && (
-              <>
-                <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
-              </>
+              <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
             )}
             {warRoom.status && (
               <span style={{ marginLeft: '1em' }}>Estado: <strong>{getStatusLabel(warRoom.status)}</strong></span>
