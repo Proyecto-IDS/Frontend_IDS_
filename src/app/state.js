@@ -17,10 +17,6 @@ import {
   getTrafficRecent,
   getTrafficPacketById,
   connectAlertsWebSocket,
-  getAlertsCount,
-  getAlertsBySeverity,
-  getAlertsToday,
-  getAlertsTodayCount,
   markIncidentAsResolved,
   setAuthToken,
 } from './api.js';
