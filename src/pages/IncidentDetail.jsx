@@ -218,7 +218,7 @@ function IncidentDetail({ params }) {
                 <span className="meeting-info-value">{incident.warRoomCode || '—'}</span>
               </div>
               <div className="meeting-info-item">
-                <span className="meeting-info-label">Participantes{incident.status !== 'contenido' ? ' actuales' : ''}</span>
+                <span className="meeting-info-label">Participantes{incident.status === 'contenido' ? '' : ' actuales'}</span>
                 <span className="meeting-info-value">
                   {getParticipantCount(warRoomState, incident.status === 'contenido')}
                 </span>
