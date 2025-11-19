@@ -79,7 +79,6 @@ function Dashboard() {
   });
   const [alerts, setAlerts] = useState([]);
   const [alertsPage, setAlertsPage] = useState(1);
-  const [incidentsPage, setIncidentsPage] = useState(1);
   const [meetingActions, setMeetingActions] = useState({}); // Track loading states for meetings
   const [loadingOverlay, setLoadingOverlay] = useState({
     isVisible: false,
@@ -105,31 +104,39 @@ function Dashboard() {
     setMeetingActions({});
   }, [incidents]);
 
+  // Helper: convert Spanish severity to English for backend
+  const convertSeverityToEnglish = useCallback((severity) => {
+    if (!severity) return '';
+    
+    const severityMap = {
+      'critica': 'critical',
+      'alta': 'high',
+      'media': 'medium',
+      'baja': 'low'
+    };
+    
+    return severityMap[severity] || severity;
+  }, []);
+
+  // Helper: load incidents based on filter type
+  const loadFilteredIncidents = useCallback(() => {
+    if (filters.meeting === 'resolved') {
+      loadResolvedIncidents();
+      return;
+    }
+    
+    const backendFilters = {
+      ...filters,
+      severity: convertSeverityToEnglish(filters.severity),
+    };
+    loadIncidents(backendFilters);
+  }, [filters, loadIncidents, loadResolvedIncidents, convertSeverityToEnglish]);
+
   // Apply filters when they change (only if authenticated)
   useEffect(() => {
     if (!auth?.token) return;
-    
-    setIncidentsPage(1); // Reset to first page when filters change
-    const timeoutId = window.setTimeout(() => {
-      if (filters.meeting === 'resolved') {
-        // Load resolved incidents from the special endpoint
-        loadResolvedIncidents();
-      } else {
-        // Convert Spanish severity to English for backend
-        const backendFilters = {
-          ...filters,
-          severity: filters.severity ? (
-            filters.severity === 'critica' ? 'critical' :
-            filters.severity === 'alta' ? 'high' :
-            filters.severity === 'media' ? 'medium' :
-            filters.severity === 'baja' ? 'low' :
-            filters.severity
-          ) : '',
-        };
-        loadIncidents(backendFilters);
-      }
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
+    const timeoutId = globalThis.setTimeout(loadFilteredIncidents, 250);
+    return () => globalThis.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, auth?.token]);
 
@@ -279,22 +286,17 @@ function Dashboard() {
         key: 'actions',
         label: 'Acciones',
         render: (_, row) => {
-          // Si el incidente está contenido, no tiene acciones
           if (row.status === 'contenido') {
-            return '—';
+            return <span>—</span>;
           }
-          
-          // Si ya existe warRoomId, cualquiera puede unirse
           if (row.warRoomId) {
             const isJoining = meetingActions[`join-${row.warRoomId}`];
-
             return (
               <button
                 type="button"
                 className="btn-link"
                 disabled={isJoining}
                 onClick={(e) => {
-
                   e.stopPropagation();
                   handleJoinWarRoom(row.warRoomId);
                 }}
@@ -308,18 +310,14 @@ function Dashboard() {
               </button>
             );
           }
-          
-          // ADMIN: puede crear reunión si el incidente está sin conocer y no hay warRoomId
           if (isAdmin && row.status === 'no-conocido') {
             const actionState = meetingActions[row.id];
-
             return (
               <button
                 type="button"
                 className="btn-link"
                 disabled={actionState}
                 onClick={(e) => {
-
                   e.stopPropagation();
                   handleOpenWarRoom(row.id);
                 }}
@@ -333,8 +331,7 @@ function Dashboard() {
               </button>
             );
           }
-          
-          return '—';
+          return <span>—</span>;
         },
       },
     ],
@@ -470,15 +467,17 @@ function Dashboard() {
         navigate(getRouteHash('war-room', { id: warRoomId }));
       }
     } catch (error) {
-      // Error handling - remove loading state
+      console.warn('[dashboard] Error creando reunión de emergencia:', error?.message);
+      // Remove loading state without unused destructuring variable
       setMeetingActions(prev => {
-        const { [incidentId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[incidentId];
         return rest;
       });
-      
+
       // Hide overlay and show error
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      
+
       addToast({
         title: '❌ Error al crear reunión',
         description: 'No se pudo crear la mesa de trabajo. Intenta nuevamente.',
@@ -525,15 +524,17 @@ function Dashboard() {
       
       navigate(getRouteHash('war-room', { id: warRoomId }));
     } catch (error) {
-      // Error handling - remove loading state
+      console.warn('[dashboard] Error uniéndose a reunión:', error?.message);
+      // Remove loading state without unused destructuring variable
       setMeetingActions(prev => {
-        const { [`join-${warRoomId}`]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[`join-${warRoomId}`];
         return rest;
       });
-      
+
       // Hide overlay and show error
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
-      
+
       addToast({
         title: '❌ Error al unirse',
         description: 'No se pudo acceder a la reunión. Intenta nuevamente.',
@@ -557,9 +558,9 @@ function Dashboard() {
       </section>
 
       <section className="filters-bar" aria-label="Filtros de incidentes">
-        <div className="filter-group">
-          <span className="filter-label">Estado</span>
-          <div className="chip-group" role="group" aria-label="Filtrar por estado">
+        <fieldset className="filter-group">
+          <legend className="filter-label">Estado</legend>
+          <div className="chip-group" aria-label="Filtrar por estado">
             {statusOptions.map((option) => (
               <button
                 key={option.value || 'all-status'}
@@ -571,11 +572,11 @@ function Dashboard() {
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
 
-        <div className="filter-group">
-          <span className="filter-label">Severidad</span>
-          <div className="chip-group" role="group" aria-label="Filtrar por severidad">
+        <fieldset className="filter-group">
+          <legend className="filter-label">Severidad</legend>
+          <div className="chip-group" aria-label="Filtrar por severidad">
             {severityOptions.map((option) => (
               <button
                 key={option.value || 'all-severity'}
@@ -587,7 +588,7 @@ function Dashboard() {
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
 
         <div className="filter-group">
           <span className="filter-label">Rango</span>
@@ -695,7 +696,8 @@ function Dashboard() {
         <header>
           <h3>Incidentes recientes</h3>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div className="chip-group" role="group" aria-label="Filtrar por estado de reunión">
+            <fieldset className="chip-group" aria-label="Filtrar por estado de reunión">
+              <legend className="visually-hidden">Estado de reunión</legend>
               {meetingOptions.map((option) => (
                 <button
                   key={option.value}
@@ -706,7 +708,7 @@ function Dashboard() {
                   {option.label}
                 </button>
               ))}
-            </div>
+            </fieldset>
             <span>{displayIncidents.length} registros</span>
           </div>
         </header>

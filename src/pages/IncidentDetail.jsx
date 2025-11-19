@@ -35,10 +35,63 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper function to compute participant count
+const getParticipantCount = (warRoomState, isResolved) => {
+  if (isResolved) {
+    if (warRoomState?.maxParticipantCount !== undefined) {
+      return warRoomState.maxParticipantCount;
+    }
+    if (Array.isArray(warRoomState?.participantEmails)) {
+      return warRoomState.participantEmails.length;
+    }
+    return '—';
+  }
+  
+  if (warRoomState?.currentParticipantCount !== undefined) {
+    return warRoomState.currentParticipantCount;
+  }
+  if (Array.isArray(warRoomState?.participantEmails)) {
+    return warRoomState.participantEmails.length;
+  }
+  return '—';
+};
+
+// Helper: Render action buttons based on incident status
+const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) => {
+  if (incident.status === 'contenido') {
+    return null;
+  }
+
+  return (
+    <>
+      {incident.status === 'conocido' && (
+        <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
+          Ver solución aplicada
+        </button>
+      )}
+      {incident.status === 'falso-positivo' && (
+        <>
+          <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
+            Cerrar como FP
+          </button>
+          <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
+            Escalar a no-conocido
+          </button>
+        </>
+      )}
+      {incident.status === 'conocido' && (
+        <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
+          Registrar nota
+        </button>
+      )}
+    </>
+  );
+};
+
 function IncidentDetail({ params }) {
   const { id } = params;
-  const { selectedIncident, loading, auth, warRooms } = useAppState();
-  const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, openWarRoom, addToast } = useAppActions();
+  const { selectedIncident, loading, warRooms } = useAppState();
+  const { loadIncidentById, clearSelectedIncident, updateIncidentStatus, addToast } = useAppActions();
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
@@ -63,8 +116,6 @@ function IncidentDetail({ params }) {
     return null;
   }, [id, selectedIncident]);
 
-  const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN');
-
   const warRoomState = useMemo(() => {
     if (!incident?.warRoomId) return null;
     return warRooms?.[incident.warRoomId] || null;
@@ -79,18 +130,6 @@ function IncidentDetail({ params }) {
     return null;
   }, [incident?.warRoomStartTime, incident?.warRoomDuration]);
 
-  const handleOpenWarRoom = async () => {
-    try {
-      const warRoom = await openWarRoom(id);
-      const warRoomId = warRoom?.id || warRoom?.warRoomId;
-      if (warRoomId) {
-        const hash = getRouteHash('war-room', { id: warRoomId });
-        navigate(hash);
-      }
-    } catch (error) {
-      // Error handling
-    }
-  };
 
   const handleConfirmAction = async () => {
     if (!confirm) return;
@@ -140,36 +179,7 @@ function IncidentDetail({ params }) {
           <button type="button" className="btn subtle" onClick={() => navigate(getRouteHash('dashboard'))}>
             Volver
           </button>
-          {/* Si el incidente está contenido, no mostrar ninguna acción adicional */}
-          {incident.status === 'contenido' ? (
-            // No mostrar botones adicionales para incidentes contenidos
-            null
-          ) : (
-            // Mostrar acciones normales solo si NO está contenido
-            <>
-              {incident.status === 'conocido' && (
-                <button type="button" className="btn primary" onClick={() => setSolutionOpen(true)}>
-                  Ver solución aplicada
-                </button>
-              )}
-              {/* Botones de reunión eliminados para incidentes no-conocidos */}
-              {incident.status === 'falso-positivo' && (
-                <>
-                  <button type="button" className="btn success" onClick={() => setConfirm('close_fp')}>
-                    Cerrar como FP
-                  </button>
-                  <button type="button" className="btn warn" onClick={() => setConfirm('escalate')}>
-                    Escalar a no-conocido
-                  </button>
-                </>
-              )}
-              {incident.status === 'conocido' && (
-                <button type="button" className="btn success" onClick={() => addToast({ title: 'Playbook aplicado', description: 'Se ejecutó el playbook sugerido.', tone: 'info' })}>
-                  Registrar nota
-                </button>
-              )}
-            </>
-          )}
+          {renderActionButtons(incident, setSolutionOpen, setConfirm, addToast)}
         </div>
       </header>
 
@@ -197,9 +207,9 @@ function IncidentDetail({ params }) {
 
       {incident.warRoomId && (
         <section>
-          <div className={`meeting-card minimal ${incident.status === 'contenido' ? 'resolved' : 'active'}`} role="group" aria-label="Información de mesa de trabajo">
+          <fieldset className={`meeting-card minimal ${incident.status === 'contenido' ? 'resolved' : 'active'}`} aria-label="Información de mesa de trabajo">
+            <legend className="meeting-title">Información de Mesa de Trabajo</legend>
             <div className="meeting-header">
-              <h4 className="meeting-title">Información de Mesa de Trabajo</h4>
               <span className={`meeting-badge ${incident.status === 'contenido' ? 'resolved' : 'active'}`}>{incident.status === 'contenido' ? 'Resuelta' : 'Activa'}</span>
             </div>
             <div className="meeting-info-grid">
@@ -208,11 +218,9 @@ function IncidentDetail({ params }) {
                 <span className="meeting-info-value">{incident.warRoomCode || '—'}</span>
               </div>
               <div className="meeting-info-item">
-                <span className="meeting-info-label">Participantes{incident.status !== 'contenido' ? ' actuales' : ''}</span>
+                <span className="meeting-info-label">Participantes{incident.status === 'contenido' ? '' : ' actuales'}</span>
                 <span className="meeting-info-value">
-                  {incident.status === 'contenido'
-                    ? (warRoomState?.maxParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))
-                    : (warRoomState?.currentParticipantCount ?? (Array.isArray(warRoomState?.participantEmails) ? warRoomState.participantEmails.length : '—'))}
+                  {getParticipantCount(warRoomState, incident.status === 'contenido')}
                 </span>
               </div>
               <div className="meeting-info-item">
@@ -232,7 +240,7 @@ function IncidentDetail({ params }) {
                 </div>
               )}
             </div>
-          </div>
+          </fieldset>
         </section>
       )}
 
@@ -264,7 +272,7 @@ function IncidentDetail({ params }) {
 
       {incident.status === 'contenido' ? (
         <section>
-          <div className="resolved-banner" role="status" aria-live="polite">
+          <output className="resolved-banner" aria-live="polite">
             <div className="resolved-banner-header">
               <div className="resolved-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -285,7 +293,7 @@ function IncidentDetail({ params }) {
                 <div className="resolved-banner-time-label">TIEMPO DE RESOLUCIÓN</div>
               </div>
             )}
-          </div>
+          </output>
         </section>
       ) : (
         <section className="panel">

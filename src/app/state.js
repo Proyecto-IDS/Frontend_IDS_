@@ -17,10 +17,6 @@ import {
   getTrafficRecent,
   getTrafficPacketById,
   connectAlertsWebSocket,
-  getAlertsCount,
-  getAlertsBySeverity,
-  getAlertsToday,
-  getAlertsTodayCount,
   markIncidentAsResolved,
   setAuthToken,
 } from './api.js';
@@ -57,9 +53,10 @@ const defaultSettings = {
 };
 
 function loadStoredSettings() {
-  if (typeof window === 'undefined') return defaultSettings;
+  // Prefer globalThis over window for SSR safety
+  if (!globalThis?.localStorage) return defaultSettings;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = globalThis.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultSettings;
     const parsed = JSON.parse(raw);
     const merged = { ...defaultSettings, ...parsed };
@@ -77,16 +74,17 @@ function loadStoredSettings() {
     }
     return merged;
   } catch (error) {
+    console.warn('[state] Failed to load stored settings, using defaults:', error?.message);
     return defaultSettings;
   }
 }
 
 function loadStoredAuth() {
-  if (typeof window === 'undefined') {
+  if (!globalThis?.localStorage) {
     return { token: null, user: null };
   }
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = globalThis.localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) {
       return { token: null, user: null };
     }
@@ -95,43 +93,41 @@ function loadStoredAuth() {
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed === 'string') {
-        // If it's a string inside JSON, use it directly
         return { token: parsed, user: null };
       } else if (typeof parsed?.token === 'string') {
-        // If it's the old format with token property, extract it
         return { token: parsed.token, user: parsed.user || null };
       }
     } catch (parseError) {
-      // If JSON parsing fails, treat as direct token string
+      console.warn('[state] Failed to parse stored auth JSON, using raw token string:', parseError?.message);
     }
     
     // Treat as direct token string
     return { token: raw, user: null };
   } catch (error) {
+    console.warn('[state] Failed to load stored auth, clearing token:', error?.message);
     return { token: null, user: null };
   }
 }
 
 const persistAuthState = (authState) => {
-  if (typeof window === 'undefined') return;
+  if (!globalThis?.localStorage) return;
   try {
-    // Store only the token directly, no JSON structure
     if (authState.token) {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, authState.token);
+      globalThis.localStorage.setItem(AUTH_STORAGE_KEY, authState.token);
     } else {
-      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (error) {
-    // Failed to persist
+    console.warn('[state] Failed to persist auth state:', error?.message);
   }
 };
 
 const clearAuthState = () => {
-  if (typeof window === 'undefined') return;
+  if (!globalThis?.localStorage) return;
   try {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch (error) {
-    // Failed to clear
+    console.warn('[state] Failed to clear auth state:', error?.message);
   }
 };
 
@@ -174,9 +170,7 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'settings/loaded': {
-      return { ...state, settings: action.payload };
-    }
+    case 'settings/loaded':
     case 'settings/saved': {
       return { ...state, settings: action.payload };
     }
@@ -532,208 +526,196 @@ export function AppProvider({ children }) {
       return;
     }
 
-    const handleAlertEvent = async (type, payload) => {
-      // Handle new alerts
-      if (type === 'alert' && payload?.alert) {
-        const alert = payload.alert;
-        const incidentId = alert.incidentId || `alert-${alert.id}`;
-        const alertKey = `${incidentId}-${alert.timestamp}`;
-        
-        // Create or update incident from alert
-        const incident = {
-          id: incidentId,
-          source: alert.packetId,
-          severity: alert.severity,
-          createdAt: alert.timestamp,
-          detection: {
-            model_version: alert.modelVersion || alert.model_version,
-            model_score: alert.score,
-          },
-          status: 'no-conocido',
-          type: 'alert',
-          _from: 'websocket',
-          linkedPacketId: alert.packetId,
-        };
-        
-        // Add or update incident
-        dispatch({
-          type: 'incidents/append-or-update',
-          payload: { incident },
-        });
+    // Helper: show toast notification
+    const showToast = (title, description, tone) => {
+      const id = crypto.randomUUID();
+      dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
+      globalThis.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
+    };
 
-        // Show toast notification only if not already notified
-        if (!cacheRef.current.notifiedAlertIds.has(alertKey)) {
-          cacheRef.current.notifiedAlertIds.add(alertKey);
-          
-          const actions = {
-            addToast: (options) => {
-              const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-              dispatch({ type: 'toast/added', payload: { id, ...options } });
-              window.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
-            },
-          };
-          
-          actions.addToast({
-            title: 'Nueva alerta detectada',
-            description: `Severidad ${alert.severity || 'media'} detectada en paquete ${alert.packetId}`,
-            tone: alert.severity === 'critica' || alert.severity === 'critical' || alert.severity === 'alta' || alert.severity === 'high' ? 'danger' : 'warn',
+    // Helper: determine severity tone
+    const getSeverityTone = (severity) => {
+      const severityLower = (severity || '').toLowerCase();
+      return ['critica', 'critical', 'alta', 'high'].includes(severityLower) ? 'danger' : 'warn';
+    };
+
+    // Handler: new alert
+    const handleNewAlert = (alert) => {
+      const incidentId = alert.incidentId || `alert-${alert.id}`;
+      const alertKey = `${incidentId}-${alert.timestamp}`;
+      
+      const incident = {
+        id: incidentId,
+        source: alert.packetId,
+        severity: alert.severity,
+        createdAt: alert.timestamp,
+        detection: {
+          model_version: alert.modelVersion || alert.model_version,
+          model_score: alert.score,
+        },
+        status: 'no-conocido',
+        type: 'alert',
+        _from: 'websocket',
+        linkedPacketId: alert.packetId,
+      };
+      
+      dispatch({
+        type: 'incidents/append-or-update',
+        payload: { incident },
+      });
+
+      if (!cacheRef.current.notifiedAlertIds.has(alertKey)) {
+        cacheRef.current.notifiedAlertIds.add(alertKey);
+        showToast(
+          'Nueva alerta detectada',
+          `Severidad ${alert.severity || 'media'} detectada en paquete ${alert.packetId}`,
+          getSeverityTone(alert.severity)
+        );
+      }
+    };
+
+    // Handler: war room created
+    const handleWarRoomCreated = (incidentId, warRoom) => {
+      dispatch({
+        type: 'incident/updated',
+        payload: {
+          incident: {
+            id: incidentId,
+            warRoomId: warRoom.id,
+          },
+        },
+      });
+
+      cacheRef.current.warRooms.set(warRoom.id, warRoom);
+      dispatch({ type: 'warroom/loaded', payload: warRoom });
+
+      showToast(
+        'Reunión creada',
+        `Se creó una reunión para el incidente ${incidentId}. Código: ${warRoom.code}`,
+        'info'
+      );
+    };
+
+    // Helper: find incident by war room ID
+    const findIncidentId = (warRoomId) => {
+      if (state.selectedIncident?.warRoomId === warRoomId) {
+        return state.selectedIncident.id;
+      }
+      return state.incidents.find(inc => inc.warRoomId === warRoomId)?.id || null;
+    };
+
+    // Helper: reload single incident
+    const reloadIncident = async (incidentId) => {
+      try {
+        cacheRef.current.incidentDetails.delete(incidentId);
+        console.log('Reloading incident from backend:', incidentId);
+        const updatedIncident = await getIncidentById(incidentId, baseUrl);
+        console.log('Updated incident data:', updatedIncident);
+        
+        if (updatedIncident) {
+          cacheRef.current.incidentDetails.set(incidentId, updatedIncident);
+          dispatch({ 
+            type: 'incident/updated',
+            payload: { incident: updatedIncident }
           });
-        }
-      }
-      
-      // Handle meeting created events
-      else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
-        const incidentId = payload.incidentId;
-        const warRoom = payload.warRoom;
-
-        // Update incident to include warRoomId
-        dispatch({
-          type: 'incident/updated',
-          payload: {
-            incident: {
-              id: incidentId,
-              warRoomId: warRoom.id,
-            },
-          },
-        });
-
-        // Store war room in cache
-        cacheRef.current.warRooms.set(warRoom.id, warRoom);
-        dispatch({ type: 'warroom/loaded', payload: warRoom });
-
-        // Show notification
-        const actions = {
-          addToast: (options) => {
-            const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-            dispatch({ type: 'toast/added', payload: { id, ...options } });
-            window.setTimeout(() => dispatch({ type: 'toast/dismissed', payload: id }), 4000);
-          },
-        };
-        
-        actions.addToast({
-          title: 'Reunión creada',
-          description: `Se creó una reunión para el incidente ${incidentId}. Código: ${warRoom.code}`,
-          tone: 'info',
-        });
-      }
-      
-      // Handle meeting resolved events  
-      else if (type === 'warroom.resolved' && payload?.warRoomId) {
-        console.log('WARROOM RESOLVED EVENT RECEIVED IN STATE:', type, payload);
-        // Find the incident associated with this warRoomId
-        let targetIncidentId = null;
-        
-        // Check if it's the currently selected incident
-        if (state.selectedIncident && state.selectedIncident.warRoomId === payload.warRoomId) {
-          targetIncidentId = state.selectedIncident.id;
-        } else {
-          // Find it in the incidents list
-          const matchingIncident = state.incidents.find(inc => inc.warRoomId === payload.warRoomId);
-          if (matchingIncident) {
-            targetIncidentId = matchingIncident.id;
+          
+          if (state.selectedIncident?.id === incidentId) {
+            dispatch({ 
+              type: 'incident/selected', 
+              payload: updatedIncident
+            });
           }
+          console.log('State updated with resolved incident data');
         }
+      } catch (error) {
+        console.error('Error reloading incident after resolution:', error);
+      }
+    };
 
-        console.log('Target incident found:', targetIncidentId, 'Current state:', {
-          selectedIncident: state.selectedIncident?.id,
-          incidentsCount: state.incidents?.length
-        });
+    // Helper: reload all incidents
+    const reloadAllIncidents = async () => {
+      try {
+        cacheRef.current.incidentDetails.clear();
+        const incidents = await getIncidents({}, baseUrl);
+        dispatch({ type: 'incidents/loaded', payload: incidents });
+        console.log('All incidents reloaded after meeting resolution');
+      } catch (error) {
+        console.error('Error reloading incidents list:', error);
+      }
+    };
 
-        if (targetIncidentId) {
-          try {
-            // Force clear cache for this incident to ensure fresh data
-            cacheRef.current.incidentDetails.delete(targetIncidentId);
-            
-            // Reload the complete incident data from backend to get updated meeting info
-            console.log('Reloading incident from backend:', targetIncidentId);
-            const updatedIncident = await getIncidentById(targetIncidentId, baseUrl);
-            console.log('Updated incident data:', updatedIncident);
-            
-            if (updatedIncident) {
-              // Update cache with fresh data
-              cacheRef.current.incidentDetails.set(targetIncidentId, updatedIncident);
-              
-              // Update in incidents list
-              dispatch({ 
-                type: 'incident/updated',
-                payload: { incident: updatedIncident }
-              });
-              
-              // Also update selected incident if it matches
-              if (state.selectedIncident && state.selectedIncident.id === targetIncidentId) {
-                dispatch({ 
-                  type: 'incident/selected', 
-                  payload: updatedIncident
-                });
-              }
-              
-              console.log('State updated with resolved incident data');
-            }
-          } catch (error) {
-            console.error('Error reloading incident after resolution:', error);
-          }
-        }
-        
-        // Also force reload all incidents to ensure consistency
-        try {
-          // Clear all incident cache to force fresh loading
-          cacheRef.current.incidentDetails.clear();
-          
-          const incidents = await getIncidents({}, baseUrl);
-          dispatch({ type: 'incidents/loaded', payload: incidents });
-          console.log('All incidents reloaded after meeting resolution');
-        } catch (error) {
-          console.error('Error reloading incidents list:', error);
-        }
+    // Handler: war room resolved
+    const handleWarRoomResolved = async (warRoomId) => {
+      console.log('WARROOM RESOLVED EVENT RECEIVED IN STATE:', 'warroom.resolved', { warRoomId });
+      
+      const targetIncidentId = findIncidentId(warRoomId);
+      console.log('Target incident found:', targetIncidentId, 'Current state:', {
+        selectedIncident: state.selectedIncident?.id,
+        incidentsCount: state.incidents?.length
+      });
+
+      if (targetIncidentId) {
+        await reloadIncident(targetIncidentId);
+      }
+      await reloadAllIncidents();
+    };
+
+    // Helper: update participant emails
+    const updateParticipantEmails = (existingEmails, action, userEmail) => {
+      const emails = Array.isArray(existingEmails) ? [...existingEmails] : [];
+      
+      if (action === 'joined' && !emails.includes(userEmail)) {
+        emails.push(userEmail);
+      } else if (action === 'left') {
+        return emails.filter(e => e !== userEmail);
+      }
+      return emails;
+    };
+
+    // Handler: war room participants
+    const handleWarRoomParticipants = ({ warRoomId, currentParticipantCount, action, userEmail }) => {
+      const existing = cacheRef.current.warRooms.get(warRoomId);
+      if (!existing) return;
+
+      const updated = {
+        ...existing,
+        currentParticipantCount,
+      };
+      
+      if (userEmail) {
+        updated.participantEmails = updateParticipantEmails(existing.participantEmails, action, userEmail);
       }
       
-      // Handle meeting participants events
-      else if (type === 'warroom.participants' && payload?.warRoomId) {
-        const { warRoomId, currentParticipantCount, action, userEmail } = payload;
-        
-        // Get current warRoom from cache or state
-        const existing = cacheRef.current.warRooms.get(warRoomId);
-        if (existing) {
-          const updated = {
-            ...existing,
-            currentParticipantCount,
-          };
-          
-          // Update participant emails list
-          if (userEmail) {
-            let emails = Array.isArray(existing.participantEmails) 
-              ? [...existing.participantEmails] 
-              : [];
-            
-            if (action === 'joined' && !emails.includes(userEmail)) {
-              emails.push(userEmail);
-            } else if (action === 'left') {
-              emails = emails.filter(e => e !== userEmail);
-            }
-            
-            updated.participantEmails = emails;
-          }
-          
-          cacheRef.current.warRooms.set(warRoomId, updated);
-          dispatch({ type: 'warroom/loaded', payload: updated });
-        }
-      }
+      cacheRef.current.warRooms.set(warRoomId, updated);
+      dispatch({ type: 'warroom/loaded', payload: updated });
+    };
+
+    // Handler: war room duration
+    const handleWarRoomDuration = ({ warRoomId, currentDurationSeconds }) => {
+      const existing = cacheRef.current.warRooms.get(warRoomId);
+      if (!existing) return;
+
+      const updated = {
+        ...existing,
+        currentDurationSeconds,
+      };
       
-      // Handle meeting duration updates
-      else if (type === 'warroom.duration' && payload?.warRoomId) {
-        const { warRoomId, currentDurationSeconds } = payload;
-        
-        // Update warRoom in cache
-        const existing = cacheRef.current.warRooms.get(warRoomId);
-        if (existing) {
-          const updated = {
-            ...existing,
-            currentDurationSeconds,
-          };
-          
-          cacheRef.current.warRooms.set(warRoomId, updated);
-          dispatch({ type: 'warroom/loaded', payload: updated });
-        }
+      cacheRef.current.warRooms.set(warRoomId, updated);
+      dispatch({ type: 'warroom/loaded', payload: updated });
+    };
+
+    // Main event handler
+    const handleAlertEvent = async (type, payload) => {
+      if (type === 'alert' && payload?.alert) {
+        handleNewAlert(payload.alert);
+      } else if (type === 'warroom.created' && payload?.incidentId && payload?.warRoom) {
+        handleWarRoomCreated(payload.incidentId, payload.warRoom);
+      } else if (type === 'warroom.resolved' && payload?.warRoomId) {
+        await handleWarRoomResolved(payload.warRoomId);
+      } else if (type === 'warroom.participants' && payload?.warRoomId) {
+        handleWarRoomParticipants(payload);
+      } else if (type === 'warroom.duration' && payload?.warRoomId) {
+        handleWarRoomDuration(payload);
       }
     };
 
@@ -771,9 +753,9 @@ export function AppProvider({ children }) {
     };
 
     const addToast = ({ title, description, tone = 'info' }) => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const id = crypto.randomUUID();
       dispatch({ type: 'toast/added', payload: { id, title, description, tone } });
-      window.setTimeout(() => dismissToast(id), 4000);
+      globalThis.setTimeout(() => dismissToast(id), 4000);
     };
 
     const handleAuthSuccess = (token, user, toastOptions) => {
@@ -787,30 +769,46 @@ export function AppProvider({ children }) {
       return payload;
     };
 
+    // Helper: check if incident is WebSocket-only
+    const isWebSocketOnly = (incident, apiAlerts) => {
+      return incident.type === 'alert' && 
+             incident._from === 'websocket' && 
+             !apiAlerts.some(apiAlert => apiAlert.id === incident.id);
+    };
+
+    // Helper: merge API and WebSocket incidents
+    const mergeIncidents = (apiIncidents, existingIncidents) => {
+      const apiAlerts = apiIncidents.map(incident => ({
+        ...incident,
+        type: 'alert',
+        _from: 'api'
+      }));
+      
+      const wsOnlyAlerts = existingIncidents.filter(inc => isWebSocketOnly(inc, apiAlerts));
+      
+      return [...apiAlerts, ...wsOnlyAlerts];
+    };
+
+    // Helper: try fallback incidents load
+    const tryFallbackIncidents = async (filters, existingIncidents) => {
+      if (USE_MOCKS) return [];
+      
+      try {
+        const fallback = await getIncidents(filters, '');
+        const merged = mergeIncidents(fallback, existingIncidents);
+        dispatch({ type: 'incidents/loaded', payload: merged });
+        return merged;
+      } catch (fallbackError) {
+        console.warn('[state] Fallback incidents load failed:', fallbackError?.message);
+        return [];
+      }
+    };
+
     const loadIncidents = async (filters = {}) => {
       dispatch({ type: 'incidents/loading', payload: true });
       try {
         const incidents = await getIncidents(filters, state.settings.apiBaseUrl);
-        
-        // Mark API incidents as alerts for proper tracking
-        const apiAlerts = incidents.map(incident => ({
-          ...incident,
-          type: 'alert',
-          _from: 'api'
-        }));
-        
-        // Get existing WebSocket alerts that haven't been loaded from API yet
-        const wsOnlyAlerts = state.incidents.filter(inc => 
-          inc.type === 'alert' && 
-          inc._from === 'websocket' && 
-          !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
-        );
-        
-        // Combine: API alerts first (most recent from DB), then WebSocket-only alerts
-        const merged = [
-          ...apiAlerts,
-          ...wsOnlyAlerts
-        ];
+        const merged = mergeIncidents(incidents, state.incidents);
         
         dispatch({ type: 'incidents/loaded', payload: merged });
         incidents.forEach((incident) => {
@@ -824,32 +822,25 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta nuevamente más tarde.',
           tone: 'danger',
         });
-        if (!USE_MOCKS) {
-          try {
-            const fallback = await getIncidents(filters, '');
-            const apiAlerts = fallback.map(incident => ({
-              ...incident,
-              type: 'alert',
-              _from: 'api'
-            }));
-            const wsOnlyAlerts = state.incidents.filter(inc => 
-              inc.type === 'alert' && 
-              inc._from === 'websocket' && 
-              !apiAlerts.some(apiAlert => apiAlert.id === inc.id)
-            );
-            const merged = [
-              ...apiAlerts,
-              ...wsOnlyAlerts
-            ];
-            dispatch({ type: 'incidents/loaded', payload: merged });
-            return merged;
-          } catch (fallbackError) {
-            // Fallback failed
-          }
-        }
-        return [];
+        
+        return await tryFallbackIncidents(filters, state.incidents);
       } finally {
         dispatch({ type: 'incidents/loading', payload: false });
+      }
+    };
+
+    // Helper: try fallback incident load
+    const tryFallbackIncident = async (id) => {
+      if (USE_MOCKS) return null;
+      
+      try {
+        const fallback = await getIncidentById(id, '');
+        cacheRef.current.incidentDetails.set(id, fallback);
+        dispatch({ type: 'incident/loaded', payload: fallback });
+        return fallback;
+      } catch (fallbackError) {
+        console.warn('[state] Fallback incident load failed:', fallbackError?.message);
+        return null;
       }
     };
 
@@ -871,17 +862,8 @@ export function AppProvider({ children }) {
           description: error.message || 'Revisa la conexión al backend.',
           tone: 'danger',
         });
-        if (!USE_MOCKS) {
-          try {
-            const fallback = await getIncidentById(id, '');
-            cacheRef.current.incidentDetails.set(id, fallback);
-            dispatch({ type: 'incident/loaded', payload: fallback });
-            return fallback;
-          } catch (fallbackError) {
-            // Fallback failed
-          }
-        }
-        return null;
+        
+        return await tryFallbackIncident(id);
       } finally {
         dispatch({ type: 'incident/loading', payload: false });
       }
@@ -901,7 +883,7 @@ export function AppProvider({ children }) {
           
           // Get the current incident to find the warRoomId (meetingId)
           const currentIncident = await getIncidentById(id, state.settings.apiBaseUrl);
-          if (!currentIncident || !currentIncident.warRoomId) {
+          if (!currentIncident?.warRoomId) {
             throw new Error('No se encontró la reunión asociada al incidente');
           }
           
@@ -941,78 +923,115 @@ export function AppProvider({ children }) {
             dispatch({ type: 'incident/updated', payload: { incident: fallback } });
             return fallback;
           } catch (fallbackError) {
-            // Fallback failed
+            console.warn('[state] Fallback incident status update failed:', fallbackError?.message);
           }
         }
         throw error;
       }
     };
 
+    // Helper: find war room in cache
+    const findWarRoomInCache = (id) => {
+      let existing = cacheRef.current.warRooms.get(id);
+      if (existing) return existing;
+      
+      for (const value of cacheRef.current.warRooms.values()) {
+        if (value.incidentId === id) {
+          return value;
+        }
+      }
+      return null;
+    };
+
+    // Helper: fetch existing meeting
+    const fetchExistingMeeting = async (id) => {
+      if (Number.isNaN(id)) return null;
+      
+      try {
+        const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
+        return {
+          id: meetingDetails.id,
+          warRoomId: meetingDetails.id,
+          incidentId: id,
+          ...meetingDetails
+        };
+      } catch (detailsError) {
+        console.warn('[state] Failed to fetch existing meeting details:', detailsError?.message);
+        return null;
+      }
+    };
+
+    // Helper: get full meeting details
+    const getFullMeetingDetails = async (meetingId) => {
+      try {
+        return await getMeetingDetails(meetingId, state.settings.apiBaseUrl);
+      } catch (detailsError) {
+        console.warn('[state] Failed to fetch full meeting details:', detailsError?.message);
+        return null;
+      }
+    };
+
+    // Helper: reload incident after war room creation
+    const reloadIncidentAfterWarRoom = async (id) => {
+      try {
+        const updatedIncident = await getIncidentById(id, state.settings.apiBaseUrl);
+        dispatch({ type: 'incident/loaded', payload: updatedIncident });
+      } catch (reloadError) {
+        console.warn('[state] Failed to reload incident after war room creation:', reloadError?.message);
+      }
+    };
+
+    // Helper: create new war room
+    const createNewWarRoom = async (id) => {
+      const response = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
+      const meetingId = response.id || response.warRoomId;
+      
+      const fullDetails = await getFullMeetingDetails(meetingId);
+      
+      const warRoom = {
+        id: meetingId,
+        warRoomId: meetingId,
+        incidentId: id,
+        ...(fullDetails || response)
+      };
+      
+      await reloadIncidentAfterWarRoom(id);
+      
+      return warRoom;
+    };
+
+    // Helper: try fallback war room
+    const tryFallbackWarRoom = async (id) => {
+      if (USE_MOCKS) return null;
+      
+      try {
+        const fallbackResponse = await postIncidentWarRoom(id, '');
+        const fallbackId = fallbackResponse.id || fallbackResponse.warRoomId;
+        return {
+          id: fallbackId,
+          warRoomId: fallbackId,
+          incidentId: id,
+          ...fallbackResponse
+        };
+      } catch (fallbackError) {
+        console.warn('Fallback war room failed', fallbackError);
+        return null;
+      }
+    };
+
     const openWarRoom = async (id) => {
       dispatch({ type: 'warroom/loading', payload: true });
       try {
-        // Primero busca en cache local (para esta sesión)
-        let existing = cacheRef.current.warRooms.get(id);
-        if (!existing) {
-          // Busca por incidentId
-          for (const value of cacheRef.current.warRooms.values()) {
-            if (value.incidentId === id) {
-              existing = value;
-              break;
-            }
-          }
-        }
+        const existing = findWarRoomInCache(id);
         if (existing) {
           dispatch({ type: 'warroom/loaded', payload: existing });
           return existing;
         }
 
-        // Si no está en cache, intenta obtener del backend
-        let warRoom = null;
-
-        // Si id es un número, intenta obtenerlo como meeting existente
-        if (!isNaN(id)) {
-          try {
-            const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
-            warRoom = {
-              id: meetingDetails.id,
-              warRoomId: meetingDetails.id,
-              incidentId: id,
-              ...meetingDetails
-            };
-          } catch (detailsError) {
-            // No existing meeting found
-          }
-        }
-
-        // Si no se encontró una reunión existente, crea una nueva
+        let warRoom = await fetchExistingMeeting(id);
+        
         if (!warRoom) {
-          const response = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
-          const meetingId = response.id || response.warRoomId;
-          
-          // Obtener detalles completos de la reunión recién creada
-          let fullDetails = response;
-          try {
-            fullDetails = await getMeetingDetails(meetingId, state.settings.apiBaseUrl);
-          } catch (detailsError) {
-            // Could not fetch full details
-            // Continuar con los datos básicos si falla
-          }
-          
-          warRoom = {
-            id: meetingId,
-            warRoomId: meetingId,
-            incidentId: id,
-            ...fullDetails
-          };
-          
-          // Recargar el incidente para obtener el warRoomId actualizado
-          try {
-            const updatedIncident = await getIncidentById(id, state.settings.apiBaseUrl);
-            dispatch({ type: 'incident/loaded', payload: updatedIncident });
-          } catch (reloadError) {
-            // Could not reload incident
-          }
+          warRoom = await createNewWarRoom(id);
         }
 
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
@@ -1024,23 +1043,14 @@ export function AppProvider({ children }) {
           description: error.message || 'Intenta más tarde.',
           tone: 'danger',
         });
-        if (!USE_MOCKS) {
-          try {
-            const fallbackResponse = await postIncidentWarRoom(id, '');
-            const fallbackId = fallbackResponse.id || fallbackResponse.warRoomId;
-            const fallback = {
-              id: fallbackId,
-              warRoomId: fallbackId,
-              incidentId: id,
-              ...fallbackResponse
-            };
-            cacheRef.current.warRooms.set(fallback.id, fallback);
-            dispatch({ type: 'warroom/loaded', payload: fallback });
-            return fallback;
-          } catch (fallbackError) {
-            console.warn('Fallback war room failed', fallbackError);
-          }
+        
+        const fallback = await tryFallbackWarRoom(id);
+        if (fallback) {
+          cacheRef.current.warRooms.set(fallback.id, fallback);
+          dispatch({ type: 'warroom/loaded', payload: fallback });
+          return fallback;
         }
+        
         throw error;
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
@@ -1091,8 +1101,18 @@ export function AppProvider({ children }) {
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
       } catch (error) {
-        // Error handling - let the calling component show the toast
-        throw error;
+        // Add logging & classification
+        console.warn('[state] Failed to join war room:', error?.message);
+        // Flag error as already logged so caller can avoid duplicate toasts
+        if (error && typeof error === 'object') {
+          // Non-enumerable flag to minimize pollution; log if tagging fails
+          try {
+            Object.defineProperty(error, '_warRoomJoinLogged', { value: true, enumerable: false });
+          } catch (error_) {
+            console.warn('[state] Failed to mark join error as logged:', error_?.message);
+          }
+        }
+        throw error; 
       } finally {
         dispatch({ type: 'warroom/loading', payload: false });
       }
@@ -1165,8 +1185,8 @@ export function AppProvider({ children }) {
         ...updates,
         apiBaseUrl: normalizeBaseUrl(updates.apiBaseUrl) || DEFAULT_API_BASE_URL,
       };
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      if (globalThis?.localStorage) {
+        globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       }
       dispatch({ type: 'settings/saved', payload: next });
       addToast({
@@ -1302,7 +1322,7 @@ export function AppProvider({ children }) {
       try {
         await authLogoutApi(state.settings.apiBaseUrl);
       } catch (error) {
-        // Error handling silently
+        console.warn('[state] Logout request failed (continuing logout flow):', error?.message);
       } finally {
         clearAuthState();
         setAuthToken(null);
@@ -1313,9 +1333,9 @@ export function AppProvider({ children }) {
           tone: 'info',
         });
         // Redirigir al login después de cerrar sesión
-        if (typeof window !== 'undefined') {
-          window.setTimeout(() => {
-            window.location.hash = '#/login';
+        if (globalThis?.location) {
+          globalThis.setTimeout(() => {
+            globalThis.location.hash = '#/login';
           }, 100);
         }
       }
@@ -1444,7 +1464,7 @@ export function AppProvider({ children }) {
             linkPacketToIncident(packetId, fallback.incidentId, severity);
             return fallback;
           } catch (fallbackError) {
-            // Fallback failed silently
+            console.warn('[state] Fallback create incident from packet failed:', fallbackError?.message);
           }
         }
         throw error;

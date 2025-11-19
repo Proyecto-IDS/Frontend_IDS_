@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const themeLabels = {
   auto: 'Tema automático',
@@ -71,5 +72,21 @@ const Topbar = memo(function Topbar({
     </header>
   );
 });
+
+Topbar.propTypes = {
+  title: PropTypes.string,
+  subtitle: PropTypes.string,
+  theme: PropTypes.oneOf(['auto', 'light', 'dark']),
+  onThemeCycle: PropTypes.func.isRequired,
+  onMenuToggle: PropTypes.func,
+  user: PropTypes.shape({
+    name: PropTypes.string,
+    email: PropTypes.string,
+    picture: PropTypes.string,
+  }),
+  onLogout: PropTypes.func,
+  authLoading: PropTypes.bool,
+  hideUserActions: PropTypes.bool,
+};
 
 export default Topbar;
