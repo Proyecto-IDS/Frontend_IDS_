@@ -92,14 +92,12 @@ function loadStoredAuth() {
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed === 'string') {
-        // If it's a string inside JSON, use it directly
         return { token: parsed, user: null };
       } else if (typeof parsed?.token === 'string') {
-        // If it's the old format with token property, extract it
         return { token: parsed.token, user: parsed.user || null };
       }
     } catch (parseError) {
-      // If JSON parsing fails, treat as direct token string
+      console.warn('[state] Failed to parse stored auth JSON, using raw token string:', parseError?.message);
     }
     
     // Treat as direct token string
@@ -118,7 +116,7 @@ const persistAuthState = (authState) => {
       globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (error) {
-    // Failed to persist
+    console.warn('[state] Failed to persist auth state:', error?.message);
   }
 };
 
@@ -127,7 +125,7 @@ const clearAuthState = () => {
   try {
     globalThis.localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch (error) {
-    // Failed to clear
+    console.warn('[state] Failed to clear auth state:', error?.message);
   }
 };
 
@@ -973,7 +971,7 @@ export function AppProvider({ children }) {
         const updatedIncident = await getIncidentById(id, state.settings.apiBaseUrl);
         dispatch({ type: 'incident/loaded', payload: updatedIncident });
       } catch (reloadError) {
-        // Could not reload incident
+        console.warn('[state] Failed to reload incident after war room creation:', reloadError?.message);
       }
     };
 
@@ -1308,7 +1306,7 @@ export function AppProvider({ children }) {
       try {
         await authLogoutApi(state.settings.apiBaseUrl);
       } catch (error) {
-        // Error handling silently
+        console.warn('[state] Logout request failed (continuing logout flow):', error?.message);
       } finally {
         clearAuthState();
         setAuthToken(null);
@@ -1450,7 +1448,7 @@ export function AppProvider({ children }) {
             linkPacketToIncident(packetId, fallback.incidentId, severity);
             return fallback;
           } catch (fallbackError) {
-            // Fallback failed silently
+            console.warn('[state] Fallback create incident from packet failed:', fallbackError?.message);
           }
         }
         throw error;
