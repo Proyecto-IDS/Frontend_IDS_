@@ -88,7 +88,7 @@ export function navigate(to) {
 
 export function useRoute() {
   const [route, setRoute] = useState(() =>
-    matchRoute(globalThis.window !== undefined ? globalThis.window.location.hash : '#/'),
+    matchRoute(globalThis.window === undefined ? '#/' : globalThis.window.location.hash),
   );
   const [Component, setComponent] = useState(null);
   const [error, setError] = useState(null);
