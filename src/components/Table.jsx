@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
 import Loader from './Loader.jsx';
 import EmptyState from './EmptyState.jsx';
 
@@ -103,5 +104,21 @@ const Table = memo(function Table({
     </div>
   );
 });
+
+Table.propTypes = {
+  columns: PropTypes.arrayOf(
+    PropTypes.shape({
+      key: PropTypes.string.isRequired,
+      label: PropTypes.string.isRequired,
+      render: PropTypes.func,
+    })
+  ).isRequired,
+  data: PropTypes.array,
+  loading: PropTypes.bool,
+  pageSize: PropTypes.number,
+  rowKey: PropTypes.func,
+  onRowClick: PropTypes.func,
+  emptyMessage: PropTypes.string,
+};
 
 export default Table;

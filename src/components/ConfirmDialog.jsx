@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import PropTypes from 'prop-types';
 import Modal from './Modal.jsx';
 
 function ConfirmDialog({ open, title, description, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', tone = 'warn', onConfirm, onCancel, children }) {
@@ -24,3 +25,15 @@ function ConfirmDialog({ open, title, description, confirmLabel = 'Confirmar', c
 }
 
 export default ConfirmDialog;
+
+ConfirmDialog.propTypes = {
+  open: PropTypes.bool.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  confirmLabel: PropTypes.string,
+  cancelLabel: PropTypes.string,
+  tone: PropTypes.string,
+  onConfirm: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  children: PropTypes.node,
+};

@@ -1,30 +1,11 @@
 import { memo } from 'react';
 import PropTypes from 'prop-types';
+import { isAdmin } from '../app/state.js';
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', description: 'Resumen de incidentes', adminOnly: false },
   { key: 'settings', label: 'Configuración', description: 'Preferencias del sistema', adminOnly: true },
 ];
-
-// Helper to check if user has admin role
-function isAdmin(user) {
-  if (!user) return false;
-  const role = user.role;
-  const authorities = user.authorities;
-  
-  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
-    return true;
-  }
-  
-  if (Array.isArray(authorities)) {
-    return authorities.some(auth => {
-      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
-      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
-    });
-  }
-  
-  return false;
-}
 
 const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate, user, hideSettings = false }) {
   const userIsAdmin = isAdmin(user);

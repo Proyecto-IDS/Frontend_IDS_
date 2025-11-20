@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import { connectAlertsWebSocket } from '../app/api.js';
@@ -650,5 +651,11 @@ function WarRoom({ params }) {
     </div>
   );
 }
+
+WarRoom.propTypes = {
+  params: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+  }).isRequired,
+};
 
 export default WarRoom;

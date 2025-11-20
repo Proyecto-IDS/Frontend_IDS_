@@ -13,7 +13,7 @@ const toHex = (value) => Array.from(textEncoder.encode(value)).map((byte) => byt
 const fromHex = (hex) => {
   if (!hex) return '';
   const pairs = hex.match(/.{1,2}/g) || [];
-  const bytes = new Uint8Array(pairs.map((pair) => parseInt(pair, 16)));
+  const bytes = new Uint8Array(pairs.map((pair) => Number.parseInt(pair, 16)));
   return textDecoder.decode(bytes);
 };
 
@@ -35,6 +35,29 @@ const mockTrafficState = {
 const listeners = new Set();
 let socketTimer = null;
 
+function getPacketInfo(proto, src, dst) {
+  switch (proto) {
+    case 'HTTP':
+      return `GET /${randomBetween(10, 999)}`;
+    case 'HTTPS':
+      return 'TLS handshake';
+    case 'DNS':
+      return `Query A ${dst}`;
+    case 'TCP':
+      return `SYN ${src.split('.')[0]}`;
+    default:
+      return 'Frame';
+  }
+}
+
+function pickSeverity() { // NOSONAR: deterministic thresholds acceptable for mock severity model
+  const roll = Math.random(); // NOSONAR
+  if (roll > 0.97) return 'critical';
+  if (roll > 0.9) return 'high';
+  if (roll > 0.7) return 'medium';
+  return 'low';
+}
+
 const generatePacket = () => {
   const proto = pick(PROTOCOLS);
   const length = randomBetween(60, 1800);
@@ -43,26 +66,8 @@ const generatePacket = () => {
   const src = ipBlock();
   const dst = ipBlock();
   const payload = toHex(`Mock payload ${id}`).slice(0, 2048);
-  const info =
-    proto === 'HTTP'
-      ? `GET /${randomBetween(10, 999)}`
-      : proto === 'HTTPS'
-        ? 'TLS handshake'
-        : proto === 'DNS'
-          ? `Query A ${dst}`
-          : proto === 'TCP'
-            ? `SYN ${src.split('.')[0]}`
-            : 'Frame';
-
-  const severityRoll = Math.random(); // NOSONAR
-  const severity =
-    severityRoll > 0.97
-      ? 'critical'
-      : severityRoll > 0.9
-        ? 'high'
-        : severityRoll > 0.7
-          ? 'medium'
-          : 'low';
+  const info = getPacketInfo(proto, src, dst);
+  const severity = pickSeverity();
 
   return {
     id,
@@ -119,7 +124,6 @@ const startSocketLoop = () => {
 };
 
 export function createMockTrafficSocket() {
-  let isOpen = false;
 
   const socket = {
     readyState: 0,
@@ -129,7 +133,6 @@ export function createMockTrafficSocket() {
         clearInterval(socketTimer);
         socketTimer = null;
       }
-      isOpen = false;
       socket.readyState = 3;
     },
     send() {},
@@ -142,7 +145,6 @@ export function createMockTrafficSocket() {
   };
 
   setTimeout(() => {
-    isOpen = true;
     socket.readyState = 1;
     listeners.add(socket._handleMessage);
     startSocketLoop();

@@ -594,7 +594,7 @@ function Dashboard() {
           <span className="filter-label">Rango</span>
           <div className="range-inputs">
             <label>
-              Desde
+              Desde{' '}
               <input
                 type="date"
                 value={filters.from}
@@ -602,7 +602,7 @@ function Dashboard() {
               />
             </label>
             <label>
-              Hasta
+              Hasta{' '}
               <input
                 type="date"
                 value={filters.to}
