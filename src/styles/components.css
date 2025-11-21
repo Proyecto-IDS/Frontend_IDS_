@@ -519,8 +519,6 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  display: grid;
-  place-items: center;
   z-index: 1000;
 }
 
@@ -532,7 +530,11 @@
   box-shadow: var(--shadow);
   max-width: 420px;
   width: min(420px, 90vw);
-  position: relative;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
 }
 
 .modal-actions {
