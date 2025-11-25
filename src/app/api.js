@@ -72,22 +72,69 @@ const post = (baseUrl, path, payload) => {
   });
 };
 
-const mapAlertToIncident = (alert, overrides = {}) => ({
-  id: alert.incidentId || `alert-${alert.id}`,
-  source: alert.packetId,
-  severity: alert.severity,
-  createdAt: alert.timestamp,
-  detection: {
-    model_version: alert.modelVersion || alert.model_version,
-    model_score: alert.score,
-  },
-  status: 'no-conocido',
-  type: 'alert',
-  linkedPacketId: alert.packetId,
-  _alertId: alert.id,
-  warRoomId: alert.warRoomId,
-  ...overrides,
-});
+const mapAlertToIncident = (alert, overrides = {}) => {
+  // Parse probabilities if backend sent JSON string
+  let probabilities = alert.probabilities;
+  if (probabilities && typeof probabilities === 'string') {
+    try { probabilities = JSON.parse(probabilities); } catch { /* ignore */ }
+  }
+
+  const attackProbability = alert.attackProbability ?? alert.attack_probability;
+  const prediction = alert.prediction || alert.detection_label;
+  const category = alert.category;
+  const standardProtocol = alert.standardProtocol;
+
+  // Derive description: prefer first line of standardProtocol; fallback to composed sentence
+  let mlDescription = '—';
+  if (standardProtocol) {
+    mlDescription = standardProtocol.split('\n')[0].trim();
+  } else if (prediction) {
+    const probStr = attackProbability != null ? `${(attackProbability * 100).toFixed(1)}%` : 'prob. desconocida';
+    if (category) {
+      mlDescription = `${prediction} (${category}) detectado. Probabilidad ${probStr}.`;
+    } else {
+      mlDescription = `${prediction} detectado. Probabilidad ${probStr}.`;
+    }
+  }
+
+  // Extract checklist from standardProtocol (lines after 'Acciones' or numbered)
+  let mlChecklist = [];
+  if (standardProtocol) {
+    const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
+    let collecting = false;
+    for (const line of lines) {
+      if (/Acciones/i.test(line)) { collecting = true; continue; }
+      if (collecting && /^\d+\)/.test(line)) {
+        mlChecklist.push(line.replace(/^\d+\)\s*/, ''));
+      }
+    }
+  }
+
+  return {
+    id: alert.incidentId || `alert-${alert.id}`,
+    source: alert.packetId,
+    severity: alert.severity,
+    createdAt: alert.timestamp,
+    detection: {
+      model_version: alert.modelVersion || alert.model_version,
+      model_score: alert.score,
+      prediction,
+    },
+    // New ML fields surfaced directly
+    attackProbability,
+    category,
+    standardProtocol,
+    probabilities,
+    mlDescription,
+    mlChecklist,
+    status: 'no-conocido',
+    type: 'alert',
+    linkedPacketId: alert.packetId,
+    _alertId: alert.id,
+    warRoomId: alert.warRoomId,
+    ...overrides,
+  };
+};
 
 // --- Autenticación --------------------------------------------------------
 
@@ -142,6 +189,33 @@ export async function getIncidentById(id, baseUrl) {
   
   // Map alert to incident format, ensuring all backend fields are included
   if (!alert) return null;
+  // Parse probabilities
+  let probabilities = alert.probabilities;
+  if (probabilities && typeof probabilities === 'string') {
+    try { probabilities = JSON.parse(probabilities); } catch { /* ignore */ }
+  }
+  const attackProbability = alert.attackProbability ?? alert.attack_probability;
+  const prediction = alert.prediction || alert.detection_label;
+  const category = alert.category;
+  const standardProtocol = alert.standardProtocol;
+  let mlDescription = '—';
+  if (standardProtocol) {
+    mlDescription = standardProtocol.split('\n')[0].trim();
+  } else if (prediction) {
+    const probStr = attackProbability != null ? `${(attackProbability * 100).toFixed(1)}%` : 'prob. desconocida';
+    mlDescription = category ? `${prediction} (${category}) detectado. Probabilidad ${probStr}.` : `${prediction} detectado. Probabilidad ${probStr}.`;
+  }
+  let mlChecklist = [];
+  if (standardProtocol) {
+    const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
+    let collecting = false;
+    for (const line of lines) {
+      if (/Acciones/i.test(line)) { collecting = true; continue; }
+      if (collecting && /^\d+\)/.test(line)) {
+        mlChecklist.push(line.replace(/^\d+\)\s*/, ''));
+      }
+    }
+  }
   
   return {
     id: alert.incidentId || `alert-${alert.id}`,
@@ -152,6 +226,7 @@ export async function getIncidentById(id, baseUrl) {
     detection: {
       model_version: alert.modelVersion || alert.model_version,
       model_score: alert.score,
+      prediction,
     },
     status: alert.status || 'no-conocido',
     type: alert.type || 'alert',
@@ -167,6 +242,12 @@ export async function getIncidentById(id, baseUrl) {
     notes: alert.notes,
     timeline: alert.timeline || [],
     aiSummary: alert.aiSummary,
+    attackProbability,
+    category,
+    standardProtocol,
+    probabilities,
+    mlDescription,
+    mlChecklist,
   };
 }
 
@@ -223,6 +304,29 @@ export async function getTrafficRecent({ since, limit } = {}, baseUrl) {
 
 export async function getTrafficPacketById(packetId, baseUrl) {
   return get(baseUrl, `/traffic/packets/${packetId}`);
+}
+
+export async function uploadTrafficFile(file, baseUrl = 'http://localhost:8080') {
+  const token = getAuthToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const url = toUrl(baseUrl, '/api/traffic/upload');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : undefined,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 // --- Alertas (métricas) ---
