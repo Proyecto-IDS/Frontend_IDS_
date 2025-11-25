@@ -80,8 +80,6 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        tabIndex={0}
-        aria-label="Área de carga de archivos"
       >
         <input
           type="file"
