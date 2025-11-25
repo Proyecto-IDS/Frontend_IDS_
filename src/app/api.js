@@ -1,3 +1,31 @@
+// --- ML helpers to avoid duplication ---
+function deriveMlDescription({ standardProtocol, prediction, category, attackProbability }) {
+  if (standardProtocol) {
+    return standardProtocol.split('\n')[0].trim();
+  } else if (prediction) {
+    const probStr = attackProbability != null ? `${(attackProbability * 100).toFixed(1)}%` : 'prob. desconocida';
+    if (category) {
+      return `${prediction} (${category}) detectado. Probabilidad ${probStr}.`;
+    } else {
+      return `${prediction} detectado. Probabilidad ${probStr}.`;
+    }
+  }
+  return '—';
+}
+
+function extractMlChecklist(standardProtocol) {
+  if (!standardProtocol) return [];
+  const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
+  let collecting = false;
+  const checklist = [];
+  for (const line of lines) {
+    if (/Acciones/i.test(line)) { collecting = true; continue; }
+    if (collecting && /^\d+\)/.test(line)) {
+      checklist.push(line.replace(/^\d+\)\s*/, ''));
+    }
+  }
+  return checklist;
+}
 import { initGoogle, requestIdToken } from './googleAuth.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
@@ -68,6 +96,7 @@ const post = (baseUrl, path, payload) => {
   return request(url, {
     method: 'POST',
     headers: DEFAULT_HEADERS,
+
     body: JSON.stringify(payload),
   });
 };
@@ -84,31 +113,8 @@ const mapAlertToIncident = (alert, overrides = {}) => {
   const category = alert.category;
   const standardProtocol = alert.standardProtocol;
 
-  // Derive description: prefer first line of standardProtocol; fallback to composed sentence
-  let mlDescription = '—';
-  if (standardProtocol) {
-    mlDescription = standardProtocol.split('\n')[0].trim();
-  } else if (prediction) {
-    const probStr = attackProbability != null ? `${(attackProbability * 100).toFixed(1)}%` : 'prob. desconocida';
-    if (category) {
-      mlDescription = `${prediction} (${category}) detectado. Probabilidad ${probStr}.`;
-    } else {
-      mlDescription = `${prediction} detectado. Probabilidad ${probStr}.`;
-    }
-  }
-
-  // Extract checklist from standardProtocol (lines after 'Acciones' or numbered)
-  let mlChecklist = [];
-  if (standardProtocol) {
-    const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
-    let collecting = false;
-    for (const line of lines) {
-      if (/Acciones/i.test(line)) { collecting = true; continue; }
-      if (collecting && /^\d+\)/.test(line)) {
-        mlChecklist.push(line.replace(/^\d+\)\s*/, ''));
-      }
-    }
-  }
+  const mlDescription = deriveMlDescription({ standardProtocol, prediction, category, attackProbability });
+  const mlChecklist = extractMlChecklist(standardProtocol);
 
   return {
     id: alert.incidentId || `alert-${alert.id}`,
@@ -198,24 +204,8 @@ export async function getIncidentById(id, baseUrl) {
   const prediction = alert.prediction || alert.detection_label;
   const category = alert.category;
   const standardProtocol = alert.standardProtocol;
-  let mlDescription = '—';
-  if (standardProtocol) {
-    mlDescription = standardProtocol.split('\n')[0].trim();
-  } else if (prediction) {
-    const probStr = attackProbability != null ? `${(attackProbability * 100).toFixed(1)}%` : 'prob. desconocida';
-    mlDescription = category ? `${prediction} (${category}) detectado. Probabilidad ${probStr}.` : `${prediction} detectado. Probabilidad ${probStr}.`;
-  }
-  let mlChecklist = [];
-  if (standardProtocol) {
-    const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
-    let collecting = false;
-    for (const line of lines) {
-      if (/Acciones/i.test(line)) { collecting = true; continue; }
-      if (collecting && /^\d+\)/.test(line)) {
-        mlChecklist.push(line.replace(/^\d+\)\s*/, ''));
-      }
-    }
-  }
+  const mlDescription = deriveMlDescription({ standardProtocol, prediction, category, attackProbability });
+  const mlChecklist = extractMlChecklist(standardProtocol);
   
   return {
     id: alert.incidentId || `alert-${alert.id}`,
