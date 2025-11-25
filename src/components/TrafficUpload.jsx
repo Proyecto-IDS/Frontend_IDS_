@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PropTypes from 'prop-types';
 import './TrafficUpload.css';
 
 export function TrafficUpload({ onUploadSuccess, onUploadError }) {
@@ -73,12 +74,15 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
 
   return (
     <div className="traffic-upload">
-      <div 
+      <div
         className={`upload-area ${dragActive ? 'drag-active' : ''} ${selectedFile ? 'has-file' : ''}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
+        role="button"
+        tabIndex={0}
+        aria-label="Área de carga de archivos"
       >
         <input
           type="file"
@@ -95,7 +99,8 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
             <span className="upload-text">
-              <strong>Haz clic para seleccionar</strong> o arrastra un archivo aquí
+              <strong>Haz clic para seleccionar</strong>{' '}
+              o arrastra un archivo aquí
             </span>
             <span className="upload-hint">JSON o CSV (máx. 10MB)</span>
           </label>
@@ -108,7 +113,7 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
               <p className="file-name">{selectedFile.name}</p>
               <p className="file-size">{(selectedFile.size / 1024).toFixed(2)} KB</p>
             </div>
-            {!isUploading && (
+            {isUploading ? null : (
               <button
                 type="button"
                 className="btn-clear"
@@ -129,11 +134,11 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
           type="button"
           className="btn btn-primary"
           onClick={handleUpload}
-          disabled={!selectedFile || isUploading}
+          disabled={Boolean(selectedFile) === false || isUploading}
         >
           {isUploading ? (
             <>
-              <span className="spinner"></span>
+              <span className="spinner" />{' '}
               Analizando...
             </>
           ) : (
@@ -151,3 +156,8 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
 }
 
 export default TrafficUpload;
+
+TrafficUpload.propTypes = {
+  onUploadSuccess: PropTypes.func,
+  onUploadError: PropTypes.func,
+};
