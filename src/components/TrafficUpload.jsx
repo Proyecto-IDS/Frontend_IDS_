@@ -74,6 +74,7 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
 
   return (
     <div className="traffic-upload">
+      {/* Drag & drop area: accesibilidad cubierta por <input type="file"> */}
       <div
         className={`upload-area ${dragActive ? 'drag-active' : ''} ${selectedFile ? 'has-file' : ''}`}
         onDragEnter={handleDrag}
