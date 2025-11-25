@@ -344,7 +344,7 @@ function IncidentDetail({ params }) {
           </div>
           <div className="ml-details" style={{ marginTop: '1rem' }}>
             <h4 style={{ marginBottom: '.5rem' }}>Detalles ML</h4>
-            <p style={{ margin: 0 }}><strong>Probabilidad:</strong> {incident.attackProbability !== undefined ? `${(incident.attackProbability * 100).toFixed(2)}%` : '—'}</p>
+            <p style={{ margin: 0 }}><strong>Probabilidad:</strong> {typeof incident.attackProbability === 'number' ? `${(incident.attackProbability * 100).toFixed(2)}%` : '—'}</p>
             <p style={{ margin: 0 }}><strong>Categoría:</strong> {mlInfo.nombre} ({incident.category || '—'})</p>
             {incident.standardProtocol && (
               <details style={{ marginTop: '.75rem' }}>
