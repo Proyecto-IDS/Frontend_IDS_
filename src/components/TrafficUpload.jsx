@@ -80,7 +80,6 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        role="button"
         tabIndex={0}
         aria-label="Área de carga de archivos"
       >
@@ -93,7 +92,7 @@ export function TrafficUpload({ onUploadSuccess, onUploadError }) {
           disabled={isUploading}
         />
         
-        {!selectedFile ? (
+        {selectedFile === null ? (
           <label htmlFor="traffic-file-input" className="upload-label">
             <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
