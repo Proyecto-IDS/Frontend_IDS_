@@ -556,11 +556,17 @@ function Dashboard() {
     
     // Show success toast with results
     const alertsCreated = result.alertsCreated || 0;
-    addToast({
-      title: '✅ Análisis completado',
-      description: `Se analizó el archivo correctamente. ${alertsCreated > 0 ? `Se crearon ${alertsCreated} alerta(s).` : 'No se detectaron amenazas.'}`,
-      tone: alertsCreated > 0 ? 'warn' : 'success'
-    });
+      let description = 'Se analizó el archivo correctamente. ';
+      if (alertsCreated > 0) {
+        description += 'Se crearon ' + alertsCreated + ' alerta(s).';
+      } else {
+        description += 'No se detectaron amenazas.';
+      }
+      addToast({
+        title: '✅ Análisis completado',
+        description,
+        tone: alertsCreated > 0 ? 'warn' : 'success'
+      });
 
     // Reload incidents to show new alerts
     setTimeout(() => {
