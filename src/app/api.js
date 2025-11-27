@@ -245,7 +245,22 @@ export async function joinMeeting(code, baseUrl) {
 }
 
 export async function getWarRoomMessages(warRoomId, baseUrl) {
-  return [];
+  if (!warRoomId) return [];
+  // Usa el endpoint correcto: /api/warroom/messages?meetingId=...
+  const path = `/api/warroom/messages?meetingId=${encodeURIComponent(warRoomId)}`;
+  try {
+    const messages = await get(baseUrl, path);
+    if (!Array.isArray(messages)) return [];
+    return messages.map((msg) => ({
+      ...msg,
+      createdAt: msg.createdAt || msg.timestamp || new Date().toISOString(),
+      senderEmail: msg.senderEmail || msg.userEmail || null,
+      senderName: msg.senderName || msg.userName || msg.displayName || null,
+    }));
+  } catch (error) {
+    console.warn('[api] getWarRoomMessages error:', error?.message);
+    return [];
+  }
 }
 
 export async function leaveMeeting(meetingId, baseUrl) {
@@ -254,10 +269,32 @@ export async function leaveMeeting(meetingId, baseUrl) {
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {
-  return { 
-    userMessage: { id: Date.now(), role: 'user', content: message.content, createdAt: new Date().toISOString() },
-    assistantMessage: null
+  // POST real al backend para persistir el mensaje
+  if (!warRoomId || !message?.content) throw new Error('Faltan datos para enviar el mensaje');
+  const path = '/api/warroom/messages';
+  const payload = {
+    meetingId: warRoomId,
+    content: message.content,
+    role: message.role || 'user',
   };
+  try {
+    const response = await post(baseUrl, path, payload);
+    return {
+      userMessage: {
+        id: response.id,
+        meetingId: response.meetingId,
+        content: response.content,
+        role: response.role,
+        createdAt: response.createdAt,
+        senderEmail: response.senderEmail,
+        senderName: response.senderName,
+      },
+      assistantMessage: null
+    };
+  } catch (error) {
+    console.warn('[api] postWarRoomMessage error:', error?.message);
+    throw error;
+  }
 }
 
 // --- Tráfico --------------------------------------------------------------
