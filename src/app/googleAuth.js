@@ -96,16 +96,12 @@ export async function requestIdToken({ timeoutMs = 60000 } = {}) {
     throw new Error('Not running in a browser environment');
   }
   
-  // Wait for GSI to be initialized
-  let attempts = 0;
-  while (!initialized && attempts < 50) {
+  const maxAttempts = 50;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (initialized) break; 
     await new Promise(resolve => setTimeout(resolve, 100));
-    attempts++;
   }
-  
-  if (!initialized) {
-    throw new Error('Google Identity Services not ready');
-  }
+  if (!initialized) throw new Error('Google Identity Services not ready');
   
   // If a credential was already received by the callback, use it
   if (globalThis.__ids_pending_credential) {

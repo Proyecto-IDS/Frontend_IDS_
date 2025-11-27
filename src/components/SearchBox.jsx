@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PropTypes from 'prop-types';
 
 function SearchBox({
   defaultValue = '',
@@ -33,5 +34,13 @@ function SearchBox({
     </form>
   );
 }
+
+SearchBox.propTypes = {
+  defaultValue: PropTypes.string,
+  placeholder: PropTypes.string,
+  onSearch: PropTypes.func,
+  autoFocus: PropTypes.bool,
+  inputId: PropTypes.string,
+};
 
 export default SearchBox;

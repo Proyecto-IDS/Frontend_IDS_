@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const Tag = memo(function Tag({ tone = 'neutral', children }) {
   return (
@@ -7,5 +8,10 @@ const Tag = memo(function Tag({ tone = 'neutral', children }) {
     </span>
   );
 });
+
+Tag.propTypes = {
+  tone: PropTypes.string,
+  children: PropTypes.node.isRequired,
+};
 
 export default Tag;

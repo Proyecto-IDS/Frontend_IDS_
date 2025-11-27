@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import Tag from '../components/Tag.jsx';
@@ -338,5 +339,11 @@ function IncidentDetail({ params }) {
     </div>
   );
 }
+
+IncidentDetail.propTypes = {
+  params: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+  }).isRequired,
+};
 
 export default IncidentDetail;

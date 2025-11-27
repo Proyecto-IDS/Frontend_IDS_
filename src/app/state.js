@@ -1,4 +1,5 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
+import PropTypes from 'prop-types';
 import {
   authStartGoogle as authStartGoogleApi,
   authFetchMe as authFetchMeApi,
@@ -1536,6 +1537,10 @@ export function AppProvider({ children }) {
   );
 }
 
+AppProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 export function useAppState() {
   const context = useContext(AppStateContext);
   if (!context) {
@@ -1550,4 +1555,24 @@ export function useAppActions() {
     throw new Error('useAppActions debe usarse dentro de AppProvider');
   }
   return context;
+}
+
+// Helper to check if user has admin role
+export function isAdmin(user) {
+  if (!user) return false;
+  const role = user.role;
+  const authorities = user.authorities;
+  
+  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
+    return true;
+  }
+  
+  if (Array.isArray(authorities)) {
+    return authorities.some(auth => {
+      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
+      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
+    });
+  }
+  
+  return false;
 }

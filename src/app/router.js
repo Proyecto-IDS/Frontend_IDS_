@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef, useState } from 'react';
+import PropTypes from 'prop-types';
 import Loader from '../components/Loader.jsx';
-import { useAppActions, useAppState } from './state.js';
+import { useAppActions, useAppState, isAdmin } from './state.js';
 
 const ROUTES = [
   {
@@ -81,13 +82,13 @@ function matchRoute(hash) {
 }
 
 export function navigate(to) {
-  if (typeof window === 'undefined') return;
-  window.location.hash = to;
+  if (globalThis.window === undefined) return;
+  globalThis.window.location.hash = to;
 }
 
 export function useRoute() {
   const [route, setRoute] = useState(() =>
-    matchRoute(typeof window !== 'undefined' ? window.location.hash : '#/'),
+    matchRoute(globalThis.window === undefined ? '#/' : globalThis.window.location.hash),
   );
   const [Component, setComponent] = useState(null);
   const [error, setError] = useState(null);
@@ -116,13 +117,13 @@ export function useRoute() {
 
   useEffect(() => {
     const handler = () => {
-      setRoute(matchRoute(window.location.hash));
+      setRoute(matchRoute(globalThis.window.location.hash));
     };
-    window.addEventListener('hashchange', handler);
-    if (!window.location.hash) {
-      window.location.hash = DEFAULT_ROUTE.path;
+    globalThis.window.addEventListener('hashchange', handler);
+    if (!globalThis.window.location.hash) {
+      globalThis.window.location.hash = DEFAULT_ROUTE.path;
     }
-    return () => window.removeEventListener('hashchange', handler);
+    return () => globalThis.window.removeEventListener('hashchange', handler);
   }, []);
 
   return { ...route, Component, error };
@@ -143,29 +144,6 @@ export function getRouteHash(key, params = {}) {
     default:
       return '#/';
   }
-}
-
-// Helper to check if user has admin role
-function isAdmin(user) {
-  if (!user) return false;
-  // Check if user object has role or authorities
-  const role = user.role;
-  const authorities = user.authorities;
-  
-  // Check role string
-  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
-    return true;
-  }
-  
-  // Check authorities array
-  if (Array.isArray(authorities)) {
-    return authorities.some(auth => {
-      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
-      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
-    });
-  }
-  
-  return false;
 }
 
 function RequireAuthGate({ render, adminOnly = false }) {
@@ -215,3 +193,8 @@ function RequireAuthGate({ render, adminOnly = false }) {
 export function requireAuth(render, adminOnly = false) {
   return createElement(RequireAuthGate, { render, adminOnly });
 }
+
+RequireAuthGate.propTypes = {
+  render: PropTypes.func.isRequired,
+  adminOnly: PropTypes.bool,
+};
