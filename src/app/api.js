@@ -1,3 +1,36 @@
+// --- ML helpers to avoid duplication ---
+function deriveMlDescription({ standardProtocol, prediction, category, attackProbability }) {
+  if (standardProtocol) {
+    return standardProtocol.split('\n')[0].trim();
+  } else if (prediction) {
+    let probStr;
+    if (attackProbability === null || attackProbability === undefined) {
+      probStr = 'prob. desconocida';
+    } else {
+      probStr = `${(attackProbability * 100).toFixed(1)}%`;
+    }
+      if (category) {
+        return `${prediction} (${category}) detectado. Probabilidad ${probStr}.`;
+      } else {
+        return `${prediction} detectado. Probabilidad ${probStr}.`;
+      }
+  }
+  return '—';
+}
+
+function extractMlChecklist(standardProtocol) {
+  if (!standardProtocol) return [];
+  const lines = standardProtocol.split('\n').map(l => l.trim()).filter(Boolean);
+  let collecting = false;
+  const checklist = [];
+  for (const line of lines) {
+    if (/Acciones/i.test(line)) { collecting = true; continue; }
+    if (collecting && /^\d+\)/.test(line)) {
+      checklist.push(line.replace(/^\d+\)\s*/, ''));
+    }
+  }
+  return checklist;
+}
 import { initGoogle, requestIdToken } from './googleAuth.js';
 
 const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
@@ -68,26 +101,51 @@ const post = (baseUrl, path, payload) => {
   return request(url, {
     method: 'POST',
     headers: DEFAULT_HEADERS,
+
     body: JSON.stringify(payload),
   });
 };
 
-const mapAlertToIncident = (alert, overrides = {}) => ({
-  id: alert.incidentId || `alert-${alert.id}`,
-  source: alert.packetId,
-  severity: alert.severity,
-  createdAt: alert.timestamp,
-  detection: {
-    model_version: alert.modelVersion || alert.model_version,
-    model_score: alert.score,
-  },
-  status: 'no-conocido',
-  type: 'alert',
-  linkedPacketId: alert.packetId,
-  _alertId: alert.id,
-  warRoomId: alert.warRoomId,
-  ...overrides,
-});
+const mapAlertToIncident = (alert, overrides = {}) => {
+  // Parse probabilities if backend sent JSON string
+  let probabilities = alert.probabilities;
+  if (probabilities && typeof probabilities === 'string') {
+    try { probabilities = JSON.parse(probabilities); } catch { /* ignore */ }
+  }
+
+  const attackProbability = alert.attackProbability ?? alert.attack_probability;
+  const prediction = alert.prediction || alert.detection_label;
+  const category = alert.category;
+  const standardProtocol = alert.standardProtocol;
+
+  const mlDescription = deriveMlDescription({ standardProtocol, prediction, category, attackProbability });
+  const mlChecklist = extractMlChecklist(standardProtocol);
+
+  return {
+    id: alert.incidentId || `alert-${alert.id}`,
+    source: alert.packetId,
+    severity: alert.severity,
+    createdAt: alert.timestamp,
+    detection: {
+      model_version: alert.modelVersion || alert.model_version,
+      model_score: alert.score,
+      prediction,
+    },
+    // New ML fields surfaced directly
+    attackProbability,
+    category,
+    standardProtocol,
+    probabilities,
+    mlDescription,
+    mlChecklist,
+    status: 'no-conocido',
+    type: 'alert',
+    linkedPacketId: alert.packetId,
+    _alertId: alert.id,
+    warRoomId: alert.warRoomId,
+    ...overrides,
+  };
+};
 
 // --- Autenticación --------------------------------------------------------
 
@@ -137,32 +195,19 @@ export async function getIncidentById(id, baseUrl) {
   if (!id || id === 'undefined') {
     return null;
   }
-  
   const alert = await get(baseUrl, `/api/alerts/by-incident/${id}`);
-  
-  // Map alert to incident format, ensuring all backend fields are included
   if (!alert) return null;
-  
+  // Use the same mapping as mapAlertToIncident, but preserve updatedAt and warRoom fields
+  const incident = mapAlertToIncident(alert);
   return {
-    id: alert.incidentId || `alert-${alert.id}`,
-    source: alert.packetId,
-    severity: alert.severity,
+    ...incident,
     createdAt: alert.timestamp || alert.createdAt,
     updatedAt: alert.updatedAt,
-    detection: {
-      model_version: alert.modelVersion || alert.model_version,
-      model_score: alert.score,
-    },
-    status: alert.status || 'no-conocido',
-    type: alert.type || 'alert',
-    linkedPacketId: alert.packetId,
-    _alertId: alert.id,
-    warRoomId: alert.warRoomId,
-    // War room / meeting information
+    status: alert.status || incident.status,
+    type: alert.type || incident.type,
     warRoomCode: alert.warRoomCode,
     warRoomStartTime: alert.warRoomStartTime,
     warRoomDuration: alert.warRoomDuration,
-    // Additional fields from backend
     relatedAssets: alert.relatedAssets || [],
     notes: alert.notes,
     timeline: alert.timeline || [],
@@ -223,6 +268,29 @@ export async function getTrafficRecent({ since, limit } = {}, baseUrl) {
 
 export async function getTrafficPacketById(packetId, baseUrl) {
   return get(baseUrl, `/traffic/packets/${packetId}`);
+}
+
+export async function uploadTrafficFile(file, baseUrl = 'http://localhost:8080') {
+  const token = getAuthToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const url = toUrl(baseUrl, '/api/traffic/upload');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : undefined,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 // --- Alertas (métricas) ---

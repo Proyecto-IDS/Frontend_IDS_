@@ -117,6 +117,62 @@ function IncidentDetail({ params }) {
     return null;
   }, [id, selectedIncident]);
 
+  // Mapping de descripciones y checklist por categoría de ataque (ML)
+  const categoryDetails = {
+    dos: {
+      nombre: 'Denegación de Servicio (DoS/DDoS)',
+      descripcion: 'Ataque orientado a agotar recursos del servicio (CPU, ancho de banda, sesiones) para impedir acceso legítimo.',
+      checklist: [
+        'Activar mitigaciones DoS/DDoS en firewall/WAF / CDN',
+        'Aplicar rate limiting y SYN cookies si aplica',
+        'Bloquear IP/rango origen anómalo',
+        'Revisar capacidad de balanceadores y escalamiento automático',
+        'Notificar a ISP / proveedor de infraestructura',
+      ],
+    },
+    probe: {
+      nombre: 'Reconocimiento / Sondeo',
+      descripcion: 'Actividad previa a explotación: escaneo de puertos, fingerprinting de servicios o enumeración.',
+      checklist: [
+        'Correlacionar con logs de firewall y IDS',
+        'Verificar si existen intentos de autenticación fallidos subsecuentes',
+        'Aumentar nivel de logging temporalmente',
+        'Evaluar bloqueo temporal de origen si persistente',
+      ],
+    },
+    r2l: {
+      nombre: 'Remote to Local (R2L)',
+      descripcion: 'Intentos de acceder o extraer recursos internos desde un origen externo no autorizado.',
+      checklist: [
+        'Revisar credenciales usadas / intentos fallidos',
+        'Verificar configuración de MFA en cuentas sensibles',
+        'Examinar accesos recientes a datos críticos',
+        'Aislar IP origen si hay patrones de exfiltración',
+      ],
+    },
+    u2r: {
+      nombre: 'User to Root (U2R)',
+      descripcion: 'Escalada de privilegios desde una cuenta normal hacia privilegios elevados.',
+      checklist: [
+        'Revisar comandos ejecutados y sudo logs',
+        'Comparar hashes de binarios críticos (integridad)',
+        'Rotar credenciales comprometidas',
+        'Forzar revisión de accesos privilegiados recientes',
+      ],
+    },
+    normal: {
+      nombre: 'Tráfico Normal',
+      descripcion: 'No se detectó patrón significativo de ataque en este flujo analizado.',
+      checklist: [
+        'Registrar para trazabilidad',
+        'Mantener monitoreo continuo',
+      ],
+    },
+  };
+
+  const mlCategory = incident?.category || 'normal';
+  const mlInfo = categoryDetails[mlCategory] || categoryDetails.normal;
+
   const warRoomState = useMemo(() => {
     if (!incident?.warRoomId) return null;
     return warRooms?.[incident.warRoomId] || null;
@@ -203,6 +259,24 @@ function IncidentDetail({ params }) {
             <dt>Notas</dt>
             <dd>{incident.notes || 'Agrega notas para el equipo de respuesta.'}</dd>
           </div>
+          {incident.attackProbability !== undefined && (
+            <div>
+              <dt>Probabilidad de ataque</dt>
+              <dd>{(incident.attackProbability * 100).toFixed(2)}%</dd>
+            </div>
+          )}
+          {incident.category && (
+            <div>
+              <dt>Categoría ML</dt>
+              <dd>{mlInfo.nombre} ({incident.category})</dd>
+            </div>
+          )}
+          {incident.detection?.prediction && (
+            <div>
+              <dt>Predicción</dt>
+              <dd>{incident.detection.prediction}</dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -267,6 +341,34 @@ function IncidentDetail({ params }) {
           </div>
           <div className="ai-analysis-content">
             {incident.aiSummary || 'El backend proporcionará un resumen con hallazgos de la IA.'}
+          </div>
+          <div className="ml-details" style={{ marginTop: '1rem' }}>
+            <h4 style={{ marginBottom: '.5rem' }}>Detalles ML</h4>
+            <p style={{ margin: 0 }}><strong>Probabilidad:</strong> {typeof incident.attackProbability === 'number' ? `${(incident.attackProbability * 100).toFixed(2)}%` : '—'}</p>
+            <p style={{ margin: 0 }}><strong>Categoría:</strong> {mlInfo.nombre} ({incident.category || '—'})</p>
+            {incident.standardProtocol && (
+              <details style={{ marginTop: '.75rem' }}>
+                <summary style={{ cursor: 'pointer' }}>Protocolo estándar sugerido</summary>
+                <pre style={{ whiteSpace: 'pre-wrap', background: 'var(--bg-secondary,#f1f5f9)', padding: '.75rem', borderRadius: '6px', fontSize: '.75rem' }}>{incident.standardProtocol}</pre>
+              </details>
+            )}
+            <details style={{ marginTop: '.75rem' }}>
+              <summary style={{ cursor: 'pointer' }}>Descripción y checklist</summary>
+              <p style={{ marginTop: '.5rem' }}>{mlInfo.descripcion}</p>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                {mlInfo.checklist.map(item => <li key={item}>{item}</li>)}
+              </ul>
+            </details>
+            {incident.probabilities && typeof incident.probabilities === 'object' && (
+              <details style={{ marginTop: '.75rem' }}>
+                <summary style={{ cursor: 'pointer' }}>Distribución de probabilidades</summary>
+                <ul style={{ marginTop: '.5rem', paddingLeft: '1.2rem' }}>
+                  {Object.entries(incident.probabilities).map(([k,v]) => (
+                    <li key={k}>{k}: {(Number(v) * 100).toFixed(2)}%</li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         </div>
       </section>
