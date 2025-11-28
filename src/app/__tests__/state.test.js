@@ -316,11 +316,11 @@ describe('state.js - Traffic Actions', () => {
     );
 
     act(() => {
-      result.current.actions.selectTrafficPacket('PKT-001', '192.168.1.1');
+      result.current.actions.selectTrafficPacket('PKT-001', '192.168.1.1'); // NOSONAR: Test data only
     });
 
     expect(result.current.state.traffic.selectedPacketId).toBe('PKT-001');
-    expect(result.current.state.traffic.selectedIp).toBe('192.168.1.1');
+    expect(result.current.state.traffic.selectedIp).toBe('192.168.1.1'); // NOSONAR: Test data only
   });
 
   it('setTrafficFilters debe actualizar filtros', () => {

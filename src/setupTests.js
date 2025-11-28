@@ -28,6 +28,7 @@ class WebSocketMock {
   constructor(url) {
     this.url = url;
     this.readyState = 0;
+    // NOSONAR: setTimeout is safe in test environment for simulating async WebSocket connection
     setTimeout(() => {
       this.readyState = 1;
       this.onopen?.();

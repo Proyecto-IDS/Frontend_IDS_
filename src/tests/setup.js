@@ -9,7 +9,8 @@ afterEach(() => {
 if (!globalThis.crypto) {
   Object.defineProperty(globalThis, 'crypto', {
     value: {
-      randomUUID: () => Math.random().toString(36).substring(7),
+      // NOSONAR: Using Math.random() for test UUID generation is acceptable in test environment
+      randomUUID: () => `test-${Math.random().toString(36).substring(2, 15)}`, // NOSONAR
     },
     writable: true,
   });
