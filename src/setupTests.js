@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { expect, afterEach, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
 // Cleanup after each test
@@ -18,10 +18,10 @@ const localStorageMock = {
   removeItem: vi.fn(),
   clear: vi.fn(),
 };
-global.localStorage = localStorageMock;
+globalThis.localStorage = localStorageMock;
 
 // Mock fetch
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 // Mock WebSocket
 class WebSocketMock {
@@ -33,7 +33,9 @@ class WebSocketMock {
       this.onopen?.();
     }, 0);
   }
-  send() {}
+  send() {
+    // Mock implementation
+  }
   close() {
     this.readyState = 3;
     this.onclose?.();
@@ -41,6 +43,8 @@ class WebSocketMock {
   addEventListener(event, handler) {
     this[`on${event}`] = handler;
   }
-  removeEventListener() {}
+  removeEventListener(event, handler) {
+    // Mock implementation for removing event listeners
+  }
 }
-global.WebSocket = WebSocketMock;
+globalThis.WebSocket = WebSocketMock;

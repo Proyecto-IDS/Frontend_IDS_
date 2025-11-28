@@ -12,7 +12,7 @@ import {
 describe('api.js - Funciones Críticas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
+    globalThis.fetch = vi.fn();
   });
 
   it('setAuthToken/getAuthToken deben gestionar el token', () => {
@@ -24,7 +24,7 @@ describe('api.js - Funciones Críticas', () => {
 
   it('authFetchMe debe obtener información del usuario', async () => {
     const mockUser = { email: 'test@test.com', role: 'ROLE_USER' };
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
@@ -38,7 +38,7 @@ describe('api.js - Funciones Críticas', () => {
 
   it('getIncidents debe retornar lista de incidentes', async () => {
     const mockIncidents = [{ id: 'INC-001', severity: 'critical' }];
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
@@ -53,7 +53,7 @@ describe('api.js - Funciones Críticas', () => {
 
   it('postIncidentWarRoom debe crear una reunión', async () => {
     const mockWarRoom = { id: 1, code: 'MEET-123' };
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
@@ -66,7 +66,7 @@ describe('api.js - Funciones Críticas', () => {
   });
 
   it('uploadTrafficFile debe subir archivo', async () => {
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
@@ -86,7 +86,7 @@ describe('api.js - Funciones Críticas', () => {
   });
 
   it('debe manejar errores HTTP', async () => {
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
       headers: new Headers({ 'content-type': 'application/json' }),
