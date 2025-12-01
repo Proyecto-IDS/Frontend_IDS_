@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
-import { connectAlertsWebSocket } from '../app/api.js';
+import { connectAlertsWebSocket, connectWarRoomChatWebSocket } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
@@ -208,7 +208,7 @@ function WarRoom({ params }) {
     };
   }, [leaveWarRoom]);
 
-  // WebSocket connection for real-time participant updates
+  // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
@@ -238,11 +238,6 @@ function WarRoom({ params }) {
         const hash = getRouteHash('incident-detail', { id: incidentId });
         navigate(hash);
       }
-      
-      // Handle new messages (if implemented in backend)
-      if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
-        loadWarRoomMessages(warRoomId);
-      }
     };
 
     const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
@@ -260,8 +255,40 @@ function WarRoom({ params }) {
     return () => {
       socket.close();
     };
-  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, loadWarRoomMessages]);
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, addToast]);
 
+  // WebSocket connection for real-time chat messages
+  useEffect(() => {
+    if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
+
+    const handleChatMessage = (messageData) => {
+      // Reload messages when new message arrives
+      loadWarRoomMessages(warRoomId);
+    };
+
+    const chatSocket = connectWarRoomChatWebSocket(
+      settings.apiBaseUrl,
+      warRoomId,
+      handleChatMessage,
+      {
+        onOpen: () => {
+          console.log('War Room Chat WebSocket connected');
+        },
+        onClose: () => {
+          console.log('War Room Chat WebSocket disconnected');
+        },
+        onError: (error) => {
+          console.warn('War Room Chat WebSocket error:', error);
+        },
+      }
+    );
+
+    return () => {
+      chatSocket.close();
+    };
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, loadWarRoomMessages]);
+
+  // Fallback polling for messages (in case WebSocket disconnects)
   useEffect(() => {
     if (!warRoomId) return;
     loadWarRoomMessages(warRoomId);

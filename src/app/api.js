@@ -259,7 +259,15 @@ export async function joinMeeting(code, baseUrl) {
 }
 
 export async function getWarRoomMessages(warRoomId, baseUrl) {
-  return [];
+  const messages = await get(baseUrl, '/api/warroom/messages', { meetingId: warRoomId });
+  // Transform backend format to frontend format
+  return messages.map(msg => ({
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    createdAt: msg.createdAt,
+    senderEmail: msg.senderEmail
+  }));
 }
 
 export async function leaveMeeting(meetingId, baseUrl) {
@@ -268,9 +276,18 @@ export async function leaveMeeting(meetingId, baseUrl) {
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {
-  return { 
-    userMessage: { id: Date.now(), role: 'user', content: message.content, createdAt: new Date().toISOString() },
-    assistantMessage: null
+  const response = await post(baseUrl, '/api/warroom/messages', {
+    meetingId: warRoomId,
+    content: message.content,
+    role: message.role || 'user'
+  });
+  // Return the message from response
+  return {
+    id: response.id,
+    role: response.role,
+    content: response.content,
+    createdAt: response.createdAt,
+    senderEmail: response.senderEmail
   };
 }
 
@@ -400,6 +417,80 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
       if (retryTimer) clearTimeout(retryTimer);
       currentSocket?.close();
     },
+  };
+}
+
+// WebSocket connection for War Room chat (real-time messaging)
+export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onOpen, onClose, onError } = {}) {
+  let closedExplicitly = false;
+  let currentSocket = null;
+  let retryTimer = null;
+
+  const buildWsUrl = () => {
+    const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    let target = normalized.replace(/^http/, 'ws') + '/ws/warroom/chat';
+    return target;
+  };
+
+  const setupSocket = () => {
+    if (closedExplicitly) return;
+    try {
+      const wsUrl = buildWsUrl();
+      currentSocket = new WebSocket(wsUrl);
+    } catch (error) {
+      onError?.(error);
+      scheduleReconnect();
+      return;
+    }
+
+    currentSocket.addEventListener('open', () => {
+      onOpen?.();
+    });
+
+    currentSocket.addEventListener('message', (event) => {
+      try {
+        const messageData = JSON.parse(event.data);
+        // Only process messages for this meeting
+        if (messageData.meetingId === String(meetingId) || messageData.meetingId === meetingId) {
+          onMessage?.(messageData);
+        }
+      } catch (error) {
+        console.warn('War Room Chat WebSocket: Failed to parse message:', error.message);
+      }
+    });
+
+    currentSocket.addEventListener('close', () => {
+      onClose?.();
+      if (!closedExplicitly) scheduleReconnect();
+    });
+
+    currentSocket.addEventListener('error', (event) => {
+      onError?.(event);
+      if (!closedExplicitly) currentSocket?.close();
+    });
+  };
+
+  const scheduleReconnect = () => {
+    if (retryTimer || closedExplicitly) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      setupSocket();
+    }, 5000);
+  };
+
+  setupSocket();
+
+  return {
+    close() {
+      closedExplicitly = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      currentSocket?.close();
+    },
+    send(message) {
+      if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.send(JSON.stringify(message));
+      }
+    }
   };
 }
 
