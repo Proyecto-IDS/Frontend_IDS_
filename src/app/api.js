@@ -281,13 +281,18 @@ export async function postWarRoomMessage(warRoomId, message, baseUrl) {
     content: message.content,
     role: message.role || 'user'
   });
-  // Return the message from response
-  return {
+  // Backend returns single message, but frontend expects { userMessage, assistantMessage }
+  const userMessage = {
     id: response.id,
     role: response.role,
     content: response.content,
     createdAt: response.createdAt,
     senderEmail: response.senderEmail
+  };
+  // Chat doesn't have AI assistant response, only user messages
+  return {
+    userMessage,
+    assistantMessage: null
   };
 }
 

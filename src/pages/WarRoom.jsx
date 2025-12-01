@@ -432,8 +432,15 @@ function WarRoom({ params }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!message.trim()) return;
-    await sendWarRoomMessage(warRoomId, message.trim());
-    setMessage('');
+    
+    try {
+      await sendWarRoomMessage(warRoomId, message.trim());
+      setMessage('');
+      // Give backend time to persist and broadcast, then reload
+      setTimeout(() => loadWarRoomMessages(warRoomId), 200);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   const handleChecklistToggle = (itemId) => {
@@ -606,10 +613,10 @@ function WarRoom({ params }) {
             <span>Actualiza cada 10 segundos</span>
           </header>
           <div className="chat-messages" aria-live="polite">
-            {messages.map((item) => (
+            {messages.filter(item => item && item.id).map((item) => (
               <article key={item.id} className={`chat-message chat-${item.role}`}>
                 <header>
-                  <span>{item.role === 'assistant' ? 'Asistente' : 'Analista'}</span>
+                  <span>{item.role === 'assistant' ? 'Asistente' : item.senderEmail || 'Analista'}</span>
                   <time dateTime={item.createdAt}>{formatTimestamp(item.createdAt)}</time>
                 </header>
                 <p>{item.content}</p>
