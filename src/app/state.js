@@ -950,11 +950,23 @@ export function AppProvider({ children }) {
       
       try {
         const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
+        
+        // Parse checklist JSON if present
+        let checklist = [];
+        if (meetingDetails.checklistJson) {
+          try {
+            checklist = JSON.parse(meetingDetails.checklistJson);
+          } catch (parseError) {
+            console.warn('[state] Failed to parse checklist JSON:', parseError);
+          }
+        }
+        
         return {
           id: meetingDetails.id,
           warRoomId: meetingDetails.id,
           incidentId: id,
-          ...meetingDetails
+          ...meetingDetails,
+          checklist
         };
       } catch (detailsError) {
         console.warn('[state] Failed to fetch existing meeting details:', detailsError?.message);
@@ -989,11 +1001,22 @@ export function AppProvider({ children }) {
       
       const fullDetails = await getFullMeetingDetails(meetingId);
       
+      // Parse checklist JSON if present
+      let checklist = [];
+      if (fullDetails?.checklistJson) {
+        try {
+          checklist = JSON.parse(fullDetails.checklistJson);
+        } catch (parseError) {
+          console.warn('[state] Failed to parse checklist JSON:', parseError);
+        }
+      }
+      
       const warRoom = {
         id: meetingId,
         warRoomId: meetingId,
         incidentId: id,
-        ...(fullDetails || response)
+        ...(fullDetails || response),
+        checklist
       };
       
       await reloadIncidentAfterWarRoom(id);
@@ -1092,11 +1115,22 @@ export function AppProvider({ children }) {
           console.warn('Could not fetch full meeting details:', detailsError);
         }
         
+        // Parse checklist JSON if present
+        let checklist = [];
+        if (fullDetails.checklistJson) {
+          try {
+            checklist = JSON.parse(fullDetails.checklistJson);
+          } catch (parseError) {
+            console.warn('[state] Failed to parse checklist JSON:', parseError);
+          }
+        }
+        
         const warRoom = {
           id: meetingId,
           warRoomId: meetingId,
           code: code,
-          ...fullDetails
+          ...fullDetails,
+          checklist
         };
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
