@@ -121,10 +121,24 @@ const mapAlertToIncident = (alert, overrides = {}) => {
   const mlDescription = deriveMlDescription({ standardProtocol, prediction, category, attackProbability });
   const mlChecklist = extractMlChecklist(standardProtocol);
 
+  // Normalize severity values from backend to lowercase Spanish
+  const normalizeSeverity = (sev) => {
+    if (!sev) return 'baja';
+    const lower = String(sev).toLowerCase();
+    // Map English and Spanish variations
+    if (lower === 'critical' || lower === 'critico') return 'critica';
+    if (lower === 'high' || lower === 'alto') return 'alta';
+    if (lower === 'medium' || lower === 'medio') return 'media';
+    if (lower === 'low' || lower === 'bajo') return 'baja';
+    if (lower === 'conocido') return 'conocido';
+    if (lower === 'falso_positivo' || lower === 'falso-positivo') return 'falso-positivo';
+    return lower;
+  };
+
   return {
     id: alert.incidentId || `alert-${alert.id}`,
     source: alert.packetId,
-    severity: alert.severity,
+    severity: normalizeSeverity(alert.severity),
     createdAt: alert.timestamp,
     detection: {
       model_version: alert.modelVersion || alert.model_version,
