@@ -15,6 +15,8 @@ import {
   joinMeeting,
   getWarRoomMessages,
   postWarRoomMessage as apiPostWarRoomMessage,
+  getAIPrivateMessages,
+  sendAIPrivateMessage,
   getTrafficRecent,
   getTrafficPacketById,
   connectAlertsWebSocket,
@@ -258,6 +260,17 @@ function reducer(state, action) {
         warRooms: {
           ...state.warRooms,
           [id]: { ...existing, checklist },
+        },
+      };
+    }
+    case 'warroom/privateMessages': {
+      const { id, privateMessages } = action.payload;
+      const existing = state.warRooms[id] || { id };
+      return {
+        ...state,
+        warRooms: {
+          ...state.warRooms,
+          [id]: { ...existing, privateMessages },
         },
       };
     }
@@ -1207,11 +1220,40 @@ export function AppProvider({ children }) {
       }
     };
 
-    const updateWarRoomChecklist = (warRoomId, checklist) => {
-      const existing = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
-      const updated = { ...existing, checklist };
-      cacheRef.current.warRooms.set(warRoomId, updated);
-      dispatch({ type: 'warroom/checklist', payload: { id: warRoomId, checklist } });
+
+
+    // AI Private Chat functions
+    const loadAIPrivateMessages = async (warRoomId) => {
+      try {
+        const messages = await getAIPrivateMessages(warRoomId, state.settings.apiBaseUrl);
+        const existing = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
+        const updated = { ...existing, privateMessages: messages };
+        cacheRef.current.warRooms.set(warRoomId, updated);
+        dispatch({ type: 'warroom/privateMessages', payload: { id: warRoomId, privateMessages: messages } });
+        return messages;
+      } catch (error) {
+        addToast({
+          title: 'No se pudieron cargar los mensajes privados de IA',
+          description: error.message || 'Revisa la API.',
+          tone: 'warn',
+        });
+        return [];
+      }
+    };
+
+    const sendAIPrivateMessageAction = async (warRoomId, content) => {
+      try {
+        await sendAIPrivateMessage(warRoomId, content, state.settings.apiBaseUrl);
+        // Reload messages to get both user message and AI response
+        setTimeout(() => loadAIPrivateMessages(warRoomId), 500);
+      } catch (error) {
+        addToast({
+          title: 'No se pudo enviar el mensaje privado a la IA',
+          description: error.message || 'Intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
     };
 
     const saveSettings = (updates) => {
@@ -1540,7 +1582,9 @@ export function AppProvider({ children }) {
       joinWarRoom,
       loadWarRoomMessages,
       sendWarRoomMessage,
-      updateWarRoomChecklist,
+
+      loadAIPrivateMessages,
+      sendAIPrivateMessage: sendAIPrivateMessageAction,
       saveSettings,
       authStartGoogle: authStartGoogleAction,
       authHandleReturn: authHandleReturnAction,
