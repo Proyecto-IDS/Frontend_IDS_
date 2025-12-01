@@ -7,6 +7,7 @@ import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import AIPrivateChat from '../components/AIPrivateChat.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -58,16 +59,16 @@ function WarRoom({ params }) {
     openWarRoom,
     loadWarRoomMessages,
     sendWarRoomMessage,
-    updateWarRoomChecklist,
     joinWarRoom,
     leaveWarRoom,
+    loadAIPrivateMessages,
+    sendAIPrivateMessage,
     addToast,
   } = useAppActions();
 
   const warRoom = warRooms[warRoomId];
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
-  const [localChecklist, setLocalChecklist] = useState(warRoom?.checklist || []);
   
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
@@ -262,8 +263,15 @@ function WarRoom({ params }) {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
 
     const handleChatMessage = (messageData) => {
-      // Reload messages when new message arrives
-      loadWarRoomMessages(warRoomId);
+      // Handle different types of messages
+      if (messageData.role === 'ai_user' || messageData.role === 'ai_assistant') {
+        // This is an AI chat message, reload AI messages
+        loadAIPrivateMessages(warRoomId);
+      } else {
+        // Regular team chat message, reload team messages
+        // Regular team chat message, reload team messages
+        loadWarRoomMessages(warRoomId);
+      }
     };
 
     const chatSocket = connectWarRoomChatWebSocket(
@@ -296,11 +304,7 @@ function WarRoom({ params }) {
     return () => globalThis.clearInterval(interval);
   }, [warRoomId, loadWarRoomMessages]);
 
-  useEffect(() => {
-    if (warRoom?.checklist) {
-      setLocalChecklist(warRoom.checklist);
-    }
-  }, [warRoom]);
+
 
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
@@ -443,15 +447,7 @@ function WarRoom({ params }) {
     }
   };
 
-  const handleChecklistToggle = (itemId) => {
-    setLocalChecklist((current) => {
-      const updated = current.map((item) =>
-        item.id === itemId ? { ...item, done: !item.done } : item,
-      );
-      updateWarRoomChecklist(warRoomId, updated);
-      return updated;
-    });
-  };
+
 
   const handleMarkContained = async () => {
     if (!isAdmin(auth?.user)) {
@@ -609,8 +605,8 @@ function WarRoom({ params }) {
       <div className="war-room-layout">
         <section className="panel chat-panel" aria-labelledby="chat-heading">
           <header>
-            <h3 id="chat-heading">Chat con IA de respuesta</h3>
-            <span>Actualiza cada 10 segundos</span>
+            <h3 id="chat-heading">💬 Chat del equipo</h3>
+            <span>Conversación grupal - Actualiza cada 10 segundos</span>
           </header>
           <div className="chat-messages" aria-live="polite">
             {messages.filter(item => item && item.id).map((item) => (
@@ -632,7 +628,7 @@ function WarRoom({ params }) {
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Describe el siguiente paso o pregunta a la IA."
+              placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
               required
             />
             <div className="chat-actions">
@@ -643,24 +639,15 @@ function WarRoom({ params }) {
           </form>
         </section>
 
-        <aside className="panel checklist-panel" aria-labelledby="checklist-heading">
-          <header>
-            <h3 id="checklist-heading">Checklist sugerida</h3>
-          </header>
-          <ul className="checklist">
-            {localChecklist.map((item) => (
-              <li key={item.id}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={() => handleChecklistToggle(item.id)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
+        <aside className="panel ai-private-panel ai-private-panel-large">
+          <AIPrivateChat
+            warRoomId={warRoomId}
+            privateMessages={warRoom?.privateMessages}
+            loading={loading.warRoom}
+            onSendMessage={sendAIPrivateMessage}
+            onLoadMessages={loadAIPrivateMessages}
+            isAdmin={isAdmin(auth?.user)}
+          />
         </aside>
       </div>
 

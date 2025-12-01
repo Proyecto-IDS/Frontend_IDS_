@@ -270,6 +270,18 @@ export async function getWarRoomMessages(warRoomId, baseUrl) {
   }));
 }
 
+// --- AI Private Chat ---------------------------------------------------
+
+export async function getAIPrivateMessages(warRoomId, baseUrl) {
+  // Get private AI chat messages for the current user in this meeting
+  return get(baseUrl, `/api/ai-chat/meeting/${warRoomId}`);
+}
+
+export async function sendAIPrivateMessage(warRoomId, content, baseUrl) {
+  // Send a private message to AI assistant
+  return post(baseUrl, `/api/ai-chat/meeting/${warRoomId}`, { content });
+}
+
 export async function leaveMeeting(meetingId, baseUrl) {
   // Leave an existing meeting
   return post(baseUrl, `/api/meetings/${meetingId}/leave`);
@@ -514,6 +526,8 @@ export const api = {
   postIncidentWarRoom,
   getWarRoomMessages,
   postWarRoomMessage,
+  getAIPrivateMessages,
+  sendAIPrivateMessage,
   getTrafficRecent, 
   getTrafficPacketById,
   connectAlertsWebSocket,
