@@ -194,7 +194,7 @@ export async function authLogout() {
 
 // --- Incidentes (Alertas en Backend_IDS) ---
 
-export async function getIncidents(filters = {}, baseUrl = 'http://localhost:8080') {
+export async function getIncidents(filters = {}, baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') {
   // Backend_IDS uses /api/alerts instead of /incidents
   // Ensure we have a valid baseUrl
   const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
@@ -318,7 +318,7 @@ export async function getTrafficPacketById(packetId, baseUrl) {
   return get(baseUrl, `/traffic/packets/${packetId}`);
 }
 
-export async function uploadTrafficFile(file, baseUrl = 'http://localhost:8080') {
+export async function uploadTrafficFile(file, baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') {
   const token = getAuthToken();
   const formData = new FormData();
   formData.append('file', file);
