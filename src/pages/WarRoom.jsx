@@ -50,6 +50,40 @@ function isAdmin(user) {
   return false;
 }
 
+
+
+// Comparar si dos mensajes representan el mismo contenido
+const isSameChatMessage = (a, b) => {
+  if (!a || !b) return false;
+
+  // 1) Si tienen id y coincide, es el mismo mensaje
+  if (a.id && b.id && a.id === b.id) return true;
+
+  // 2) Normalizar contenido
+  const contentA = (a.content || '').trim();
+  const contentB = (b.content || '').trim();
+  if (!contentA || !contentB) return false;
+  if (contentA !== contentB) return false;
+
+  // 3) Comparar remitente (email o nombre si no hay email)
+  const senderA = (a.senderEmail || a.senderName || '').toLowerCase();
+  const senderB = (b.senderEmail || b.senderName || '').toLowerCase();
+  if (senderA && senderB && senderA !== senderB) return false;
+
+  // 4) Si ambos tienen fecha, solo considerarlos diferentes
+  //    si están MUY separados en el tiempo (por ejemplo > 2 minutos)
+  if (a.createdAt && b.createdAt) {
+    const tA = new Date(a.createdAt).getTime();
+    const tB = new Date(b.createdAt).getTime();
+    if (!Number.isNaN(tA) && !Number.isNaN(tB) && Math.abs(tA - tB) > 2 * 60 * 1000) {
+      return false;
+    }
+  }
+
+  // Si llegamos aquí, consideramos que representan el mismo mensaje
+  return true;
+};
+
 const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 10000);
 
 function WarRoom({ params }) {
@@ -65,8 +99,46 @@ function WarRoom({ params }) {
     sendAIPrivateMessage,
     addToast,
   } = useAppActions();
+  // ==== Resolver etiqueta de remitente usando también el usuario logueado ====
+  const getMessageSenderLabel = (message) => {
+    if (!message) return '';
+
+    // 1) Mensajes de la IA
+    if (message.role === 'assistant') {
+      return 'Asistente';
+    }
+
+    // 2) Si el backend ya mandó senderName, úsalo
+    if (message.senderName && String(message.senderName).trim().length > 0) {
+      return message.senderName;
+    }
+
+    // 3) Si hay senderEmail, usar la parte antes de @
+    if (message.senderEmail && typeof message.senderEmail === 'string') {
+      const [localPart] = message.senderEmail.split('@');
+      if (localPart) return localPart;
+      return message.senderEmail;
+    }
+
+    // 4) Fallback: si no vino nada de remitente, asumir que es el usuario actual
+    if (auth?.user) {
+      const candidateName =
+        auth.user.name ||
+        auth.user.fullName ||
+        (auth.user.email && auth.user.email.split('@')[0]);
+
+      if (candidateName && candidateName.trim().length > 0) {
+        return candidateName;
+      }
+    }
+
+    // 5) Último fallback
+    return 'Analista';
+  };
 
   const warRoom = warRooms[warRoomId];
+  const meetingId = warRoom?.id;
+  
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
   
@@ -103,8 +175,6 @@ function WarRoom({ params }) {
       const now = new Date();
       const durationSeconds = Math.floor((now - startTime) / 1000);
       
-      // Si la diferencia es negativa, significa que startTime está en el futuro
-      // En ese caso, la reunión aún no ha empezado, mostrar 0
       if (durationSeconds < 0) {
         setCurrentDuration(0);
       } else {
@@ -112,10 +182,8 @@ function WarRoom({ params }) {
       }
     };
 
-    // Actualizar inmediatamente
     updateDuration();
     
-    // Siempre actualizar cada segundo para tener un cronómetro en tiempo real
     const interval = setInterval(updateDuration, 1000);
     
     return () => {
@@ -126,14 +194,12 @@ function WarRoom({ params }) {
   // Efecto para redirigir cuando la reunión está terminada
   useEffect(() => {
     if (warRoom?.status === 'ENDED' || warRoom?.status === 'RESOLVED') {
-      // Mostrar notificación
       addToast({
         title: 'Reunión finalizada ✅',
         description: 'La reunión ha terminado exitosamente.',
         tone: 'success',
       });
       
-      // Redirigir inmediatamente
       const hash = getRouteHash('incident-detail', { id: incidentId });
       navigate(hash);
     }
@@ -142,7 +208,6 @@ function WarRoom({ params }) {
   // Efecto separado para manejar actualizaciones del WebSocket
   useEffect(() => {
     if (warRoom?.currentDurationSeconds !== undefined) {
-      // Solo usar valor del WebSocket si es positivo
       if (warRoom.currentDurationSeconds >= 0) {
         setCurrentDuration(warRoom.currentDurationSeconds);
       }
@@ -168,7 +233,6 @@ function WarRoom({ params }) {
     const participants = warRoom.participantEmails || [];
     const isParticipant = participants.includes(userEmail);
     
-    // Only join if we haven't joined yet and we're not already a participant
     if (!isParticipant && warRoom.code && !hasJoinedRef.current) {
       joinWarRoom(warRoom.code)
         .then(() => {
@@ -184,7 +248,6 @@ function WarRoom({ params }) {
           });
         });
     } else if (isParticipant && !hasJoinedRef.current) {
-      // We're already a participant (maybe we created the meeting)
       hasJoinedRef.current = true;
       meetingIdRef.current = warRoom.id;
       joinedTimeRef.current = Date.now();
@@ -194,13 +257,11 @@ function WarRoom({ params }) {
   // Cleanup: leave meeting when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
-      // Only leave if we've been in the room for at least 2 seconds to avoid false dismounts
       const now = Date.now();
       const joinedTime = hasJoinedRef.current ? (joinedTimeRef.current || now) : now;
       const timeInRoom = now - joinedTime;
       
       if (hasJoinedRef.current && meetingIdRef.current && timeInRoom > 2000) {
-
         leaveWarRoom(meetingIdRef.current);
         hasJoinedRef.current = false;
         meetingIdRef.current = null;
@@ -213,9 +274,9 @@ function WarRoom({ params }) {
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
     
-    const isWarRoomMatch = (payloadId) => {
-      return payloadId === warRoomId || payloadId === Number(warRoomId);
-    };
+    if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
+      openWarRoom(incidentId);
+    }
     
     const handleWebSocketEvent = (eventType, payload) => {
       // Handle warroom participant updates
@@ -244,14 +305,19 @@ function WarRoom({ params }) {
     const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
       onOpen: () => {
 
-      },
-      onClose: () => {
+    if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
+      // 👇 recarga mensajes de ESTA reunión por meetingId
+      loadWarRoomMessages(meetingId);
+    }
+  };
 
-      },
-      onError: (error) => {
-        console.warn('WarRoom: WebSocket error:', error);
-      },
-    });
+  const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
+    onOpen: () => {},
+    onClose: () => {},
+    onError: (error) => {
+      console.warn('WarRoom: WebSocket error:', error);
+    },
+  });
 
     return () => {
       socket.close();
@@ -298,11 +364,14 @@ function WarRoom({ params }) {
 
   // Fallback polling for messages (in case WebSocket disconnects)
   useEffect(() => {
-    if (!warRoomId) return;
-    loadWarRoomMessages(warRoomId);
-    const interval = globalThis.setInterval(() => loadWarRoomMessages(warRoomId), POLL_INTERVAL);
+    if (!meetingId) return;
+    loadWarRoomMessages(meetingId);
+    const interval = globalThis.setInterval(
+      () => loadWarRoomMessages(meetingId),
+      POLL_INTERVAL,
+    );
     return () => globalThis.clearInterval(interval);
-  }, [warRoomId, loadWarRoomMessages]);
+  }, [meetingId, loadWarRoomMessages]);
 
 
 
@@ -321,10 +390,7 @@ function WarRoom({ params }) {
       disableBackButton();
     };
 
-    // Bloquear inmediatamente al entrar
     disableBackButton();
-    
-    // Escuchar intentos de navegación hacia atrás
     globalThis.addEventListener('popstate', handlePopState);
 
     return () => {
@@ -336,12 +402,9 @@ function WarRoom({ params }) {
   useEffect(() => {
     const handleSidebarClick = async (event) => {
       const target = event.target;
-      
-      // Buscar si el clic es en el botón Dashboard del sidebar
       const sidebarButton = target.closest('.sidebar-nav button');
       const navLabel = sidebarButton?.querySelector('.nav-label');
       
-      // Si es el botón Dashboard
       if (sidebarButton && navLabel?.textContent === 'Dashboard') {
         event.preventDefault();
         event.stopPropagation();
@@ -349,7 +412,6 @@ function WarRoom({ params }) {
       }
     };
 
-    // Escuchar clics en toda la página con captura
     document.addEventListener('click', handleSidebarClick, true);
     
     return () => {
@@ -360,19 +422,16 @@ function WarRoom({ params }) {
   // Bloquear recarga de página durante la reunión
   useEffect(() => {
     const handleKeyDown = (event) => {
-      // Bloquear F5
       if (event.key === 'F5') {
         event.preventDefault();
         return false;
       }
       
-      // Bloquear Ctrl+R y Cmd+R
       if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         event.preventDefault();
         return false;
       }
       
-      // Bloquear Ctrl+F5 (hard refresh)
       if (event.ctrlKey && event.key === 'F5') {
         event.preventDefault();
         return false;
@@ -380,26 +439,21 @@ function WarRoom({ params }) {
     };
 
     const handleBeforeUnload = (event) => {
-      // Mostrar mensaje de confirmación al intentar cerrar/recargar
       event.preventDefault();
       event.returnValue = 'Estás en una reunión activa. Si sales, serás removido de la mesa de trabajo.';
       return 'Estás en una reunión activa. Si sales, serás removido de la mesa de trabajo.';
     };
 
     const handleUnload = () => {
-      // Hacer leave cuando realmente se está saliendo de la página
       if (hasJoinedRef.current && meetingIdRef.current) {
         try {
-          // Usar sendBeacon para garantizar que la petición se envíe
           const url = `${settings.apiBaseUrl}/war-rooms/${meetingIdRef.current}/leave`;
           
           if (navigator.sendBeacon) {
-            // sendBeacon es más confiable para unload
             const data = new FormData();
             data.append('userId', auth?.user?.id || '');
             navigator.sendBeacon(url, data);
           } else {
-            // Fallback con fetch + keepalive
             fetch(url, {
               method: 'POST',
               keepalive: true,
@@ -408,7 +462,7 @@ function WarRoom({ params }) {
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({})
-            }).catch(() => {}); // Ignorar errores en unload
+            }).catch(() => {});
           }
           
           hasJoinedRef.current = false;
@@ -420,13 +474,11 @@ function WarRoom({ params }) {
       }
     };
 
-    // Agregar listeners
     document.addEventListener('keydown', handleKeyDown, true);
     globalThis.addEventListener('beforeunload', handleBeforeUnload);
     globalThis.addEventListener('unload', handleUnload);
 
     return () => {
-      // Cleanup
       document.removeEventListener('keydown', handleKeyDown, true);
       globalThis.removeEventListener('beforeunload', handleBeforeUnload);
       globalThis.removeEventListener('unload', handleUnload);
@@ -531,8 +583,6 @@ function WarRoom({ params }) {
     }
   };
 
-
-
   if (loading.warRoom && !warRoom) {
     return (
       <div className="page">
@@ -557,8 +607,6 @@ function WarRoom({ params }) {
     );
   }
 
-  const messages = warRoom.messages || [];
-
   return (
     <div className="page war-room-page">
       <header className="page-header">
@@ -581,7 +629,6 @@ function WarRoom({ params }) {
             )}
           </div>
           
-          {/* Cronómetro en tiempo real para reuniones activas */}
           {warRoom.startTime && (
             <div className="war-room-timer" style={{ fontSize: '1.1em', marginTop: '0.8em', padding: '0.5em', backgroundColor: 'var(--color-success-100)', borderRadius: '4px', border: '1px solid var(--color-success-300)' }}>
               <span style={{ color: 'var(--color-success-700)', fontWeight: '600' }}>⏱️ Duración: <strong style={{ fontFamily: 'monospace', fontSize: '1.2em' }}>{formatDuration(currentDuration)}</strong></span>
@@ -593,7 +640,6 @@ function WarRoom({ params }) {
           </div>
         </div>
         <div className="actions-row">
-          {/* Solo mostrar el botón si el usuario es administrador */}
           {isAdmin(auth?.user) && (
             <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
               Marcar como contenido
@@ -630,6 +676,11 @@ function WarRoom({ params }) {
               onChange={(event) => setMessage(event.target.value)}
               placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
               required
+                style={{
+                  minHeight: '56px',
+                  maxHeight: '120px',
+                  resize: 'vertical',
+                }}
             />
             <div className="chat-actions">
               <button type="submit" className="btn primary">
@@ -662,7 +713,6 @@ function WarRoom({ params }) {
         onConfirm={handleMarkContained}
       />
       
-      {/* Loading Overlay for exit actions */}
       <LoadingOverlay 
         isVisible={loadingOverlay.isVisible}
         title={loadingOverlay.title}
