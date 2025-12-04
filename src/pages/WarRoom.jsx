@@ -138,6 +138,7 @@ function WarRoom({ params }) {
 
   const warRoom = warRooms[warRoomId];
   const meetingId = warRoom?.id;
+  const messages = Array.isArray(warRoom?.messages) ? warRoom.messages : [];
   
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
@@ -286,7 +287,7 @@ function WarRoom({ params }) {
       
       // Handle new chat messages
       if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
-        loadWarRoomMessages(warRoomId);
+        if (meetingId) loadWarRoomMessages(meetingId);
       }
 
       // Handle warroom resolution events
@@ -322,17 +323,15 @@ function WarRoom({ params }) {
       // Handle different types of messages
       if (messageData.role === 'ai_user' || messageData.role === 'ai_assistant') {
         // This is an AI chat message, reload AI messages
-        loadAIPrivateMessages(warRoomId);
+        if (meetingId) loadAIPrivateMessages(meetingId);
       } else {
-        // Regular team chat message, reload team messages
-        // Regular team chat message, reload team messages
-        loadWarRoomMessages(warRoomId);
+        if (meetingId) loadWarRoomMessages(meetingId);
       }
     };
 
     const chatSocket = connectWarRoomChatWebSocket(
       settings.apiBaseUrl,
-      warRoomId,
+      meetingId || warRoomId,
       handleChatMessage,
       {
         onOpen: () => {
@@ -350,7 +349,7 @@ function WarRoom({ params }) {
     return () => {
       chatSocket.close();
     };
-  }, [auth?.token, settings.apiBaseUrl, warRoomId, loadWarRoomMessages]);
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, meetingId, loadWarRoomMessages, loadAIPrivateMessages]);
 
   // Fallback polling for messages (in case WebSocket disconnects)
   useEffect(() => {
@@ -434,44 +433,12 @@ function WarRoom({ params }) {
       return 'Estás en una reunión activa. Si sales, serás removido de la mesa de trabajo.';
     };
 
-    const handleUnload = () => {
-      if (hasJoinedRef.current && meetingIdRef.current) {
-        try {
-          const url = `${settings.apiBaseUrl}/war-rooms/${meetingIdRef.current}/leave`;
-          
-          if (navigator.sendBeacon) {
-            const data = new FormData();
-            data.append('userId', auth?.user?.id || '');
-            navigator.sendBeacon(url, data);
-          } else {
-            fetch(url, {
-              method: 'POST',
-              keepalive: true,
-              headers: {
-                'Authorization': `Bearer ${auth?.token}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({})
-            }).catch(() => {});
-          }
-          
-          hasJoinedRef.current = false;
-          meetingIdRef.current = null;
-          joinedTimeRef.current = null;
-        } catch (error_) {
-          console.warn('[WarRoom] Unload leave meeting failed:', error_?.message);
-        }
-      }
-    };
-
     document.addEventListener('keydown', handleKeyDown, true);
     globalThis.addEventListener('beforeunload', handleBeforeUnload);
-    globalThis.addEventListener('unload', handleUnload);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       globalThis.removeEventListener('beforeunload', handleBeforeUnload);
-      globalThis.removeEventListener('unload', handleUnload);
     };
   }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
 
@@ -480,10 +447,12 @@ function WarRoom({ params }) {
     if (!message.trim()) return;
     
     try {
-      await sendWarRoomMessage(warRoomId, message.trim());
+      await sendWarRoomMessage(meetingId || warRoomId, message.trim());
       setMessage('');
       // Give backend time to persist and broadcast, then reload
-      setTimeout(() => loadWarRoomMessages(warRoomId), 200);
+      setTimeout(() => {
+        if (meetingId) loadWarRoomMessages(meetingId);
+      }, 200);
     } catch (error) {
       console.error('Failed to send message:', error);
     }
@@ -502,7 +471,7 @@ function WarRoom({ params }) {
       return;
     }
 
-    if (!warRoomId) {
+    if (!meetingId && !warRoomId) {
       addToast({
         title: 'Error',
         description: 'No se encontró el ID de la reunión.',
@@ -514,7 +483,7 @@ function WarRoom({ params }) {
 
     try {
       const { markIncidentAsResolved } = await import('../app/api.js');
-      await markIncidentAsResolved(warRoomId, settings.apiBaseUrl);
+      await markIncidentAsResolved(meetingId || warRoomId, settings.apiBaseUrl);
       
       addToast({
         title: 'Reunión finalizada ✅',
@@ -661,6 +630,7 @@ function WarRoom({ params }) {
             </label>
             <textarea
               id="chat-input"
+              name="chat-input"
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}

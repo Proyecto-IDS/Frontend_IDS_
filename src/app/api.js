@@ -467,7 +467,7 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
 export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onOpen, onClose, onError } = {}) {
   return createWebSocketConnection({
     baseUrl,
-    path: '/ws/warroom/chat',
+    path: `/ws/warroom/chat?meetingId=${encodeURIComponent(meetingId)}`,
     onOpen,
     onClose,
     onError,
