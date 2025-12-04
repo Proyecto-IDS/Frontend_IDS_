@@ -29,8 +29,8 @@ jobs:
           api_location: ""
           output_location: "dist"
         env:
-          VITE_API_BASE_URL: https://backend-ids-eqhxhncffjehehgh.eastus-01.azurewebsites.net
-          VITE_USE_MOCKS: false
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_USE_MOCKS: ${{ secrets.VITE_USE_MOCKS }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
 
   close_pull_request_job:
