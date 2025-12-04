@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
-import { connectAlertsWebSocket } from '../app/api.js';
+import { connectAlertsWebSocket, connectWarRoomChatWebSocket } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import AIPrivateChat from '../components/AIPrivateChat.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -92,9 +93,10 @@ function WarRoom({ params }) {
     openWarRoom,
     loadWarRoomMessages,
     sendWarRoomMessage,
-    updateWarRoomChecklist,
     joinWarRoom,
     leaveWarRoom,
+    loadAIPrivateMessages,
+    sendAIPrivateMessage,
     addToast,
   } = useAppActions();
   // ==== Resolver etiqueta de remitente usando también el usuario logueado ====
@@ -139,7 +141,6 @@ function WarRoom({ params }) {
   
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
-  const [localChecklist, setLocalChecklist] = useState(warRoom?.checklist || []);
   
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
@@ -269,55 +270,89 @@ function WarRoom({ params }) {
     };
   }, [leaveWarRoom]);
 
- useEffect(() => {
-  if (!auth?.token || !settings.apiBaseUrl || !meetingId) return;
-  
-  const isWarRoomMatch = (payloadId) => {
-    return (
-      payloadId === meetingId ||
-      payloadId === Number(meetingId)
-    );
-  };
-  
-  const handleWebSocketEvent = (eventType, payload) => {
-    if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
-      openWarRoom(incidentId);
-    }
-    
-    if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
-      openWarRoom(incidentId);
-    }
-    
-    if (eventType === 'warroom.resolved' && isWarRoomMatch(payload.warRoomId)) {
-      addToast({
-        title: 'Incidente resuelto ✅',
-        description: 'La reunión ha finalizado exitosamente.',
-        tone: 'success',
-      });
+  // WebSocket connection for real-time participant updates and War Room events
+  useEffect(() => {
+    if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
+    const handleWebSocketEvent = (eventType, payload) => {
+      // Handle warroom participant updates
+      if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
+        openWarRoom(incidentId);
+      }
       
-      const hash = getRouteHash('incident-detail', { id: incidentId });
-      navigate(hash);
-    }
+      // Handle warroom duration updates
+      if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
+        openWarRoom(incidentId);
+      }
+      
+      // Handle new chat messages
+      if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
+        loadWarRoomMessages(warRoomId);
+      }
 
-    if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
-      // 👇 recarga mensajes de ESTA reunión por meetingId
-      loadWarRoomMessages(meetingId);
-    }
-  };
+      // Handle warroom resolution events
+      if (eventType === 'warroom.resolved' && isWarRoomMatch(payload.warRoomId)) {
+        addToast({
+          title: 'Incidente resuelto ✅',
+          description: 'La reunión ha finalizado exitosamente.',
+          tone: 'success',
+        });
+        
+        const hash = getRouteHash('incident-detail', { id: incidentId });
+        navigate(hash);
+      }
+    };
+    const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
+      onOpen: () => {},
+      onClose: () => {},
+      onError: (error) => {
+        console.warn('WarRoom: WebSocket error:', error);
+      },
+    });
 
-  const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
-    onOpen: () => {},
-    onClose: () => {},
-    onError: (error) => {
-      console.warn('WarRoom: WebSocket error:', error);
-    },
-  });
+    return () => {
+      socket.close();
+    };
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, addToast]);
 
-  return () => {
-    socket.close();
-  };
-}, [auth?.token, settings.apiBaseUrl, meetingId, incidentId, openWarRoom, loadWarRoomMessages, addToast]);
+  // WebSocket connection for real-time chat messages
+  useEffect(() => {
+    if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
 
+    const handleChatMessage = (messageData) => {
+      // Handle different types of messages
+      if (messageData.role === 'ai_user' || messageData.role === 'ai_assistant') {
+        // This is an AI chat message, reload AI messages
+        loadAIPrivateMessages(warRoomId);
+      } else {
+        // Regular team chat message, reload team messages
+        // Regular team chat message, reload team messages
+        loadWarRoomMessages(warRoomId);
+      }
+    };
+
+    const chatSocket = connectWarRoomChatWebSocket(
+      settings.apiBaseUrl,
+      warRoomId,
+      handleChatMessage,
+      {
+        onOpen: () => {
+          console.log('War Room Chat WebSocket connected');
+        },
+        onClose: () => {
+          console.log('War Room Chat WebSocket disconnected');
+        },
+        onError: (error) => {
+          console.warn('War Room Chat WebSocket error:', error);
+        },
+      }
+    );
+
+    return () => {
+      chatSocket.close();
+    };
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, loadWarRoomMessages]);
+
+  // Fallback polling for messages (in case WebSocket disconnects)
   useEffect(() => {
     if (!meetingId) return;
     loadWarRoomMessages(meetingId);
@@ -328,11 +363,7 @@ function WarRoom({ params }) {
     return () => globalThis.clearInterval(interval);
   }, [meetingId, loadWarRoomMessages]);
 
-  useEffect(() => {
-    if (warRoom?.checklist) {
-      setLocalChecklist(warRoom.checklist);
-    }
-  }, [warRoom]);
+
 
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
@@ -444,177 +475,21 @@ function WarRoom({ params }) {
     };
   }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
 
-  // -------------------------
-  // Chat en tiempo real (WebSocket)
-  // -------------------------
-  const [liveMessages, setLiveMessages] = useState([]);
-  const chatSocketRef = useRef(null);
-  const chatMessagesRef = useRef(null);
-
-  const persistentMessages = warRoom?.messages || [];
-
-  // Combinar mensajes persistentes y en tiempo real, evitando duplicados
-  // Combinar mensajes persistentes y en tiempo real, evitando duplicados
-  const messages = useMemo(() => {
-    // Metemos TODO en un solo array
-    const all = [
-      ...(persistentMessages || []),
-      ...(liveMessages || []),
-    ];
-
-    // Deduplicar globalmente
-    const unique = [];
-    all.forEach((msg) => {
-      const already = unique.some((existing) => isSameChatMessage(existing, msg));
-      if (!already) {
-        unique.push(msg);
-      }
-    });
-
-    // Ordenar por fecha
-    unique.sort((a, b) => {
-      const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return aTime - bTime;
-    });
-
-    return unique;
-  }, [persistentMessages, liveMessages]);
-
-
-  useEffect(() => {
-    if (!settings.apiBaseUrl || !meetingId) return;
-    if (!globalThis.WebSocket) return;
-
-    const wsBaseUrl = settings.apiBaseUrl.replace(/^http/, 'ws');
-    const socketUrl = `${wsBaseUrl}/ws/warroom/chat`;
-
-    const socket = new WebSocket(socketUrl);
-    chatSocketRef.current = socket;
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        const msg = data?.message || data;
-        if (!msg) return;
-
-        const incomingMeetingId = msg.meetingId ?? msg.warRoomId;
-        if (
-          incomingMeetingId !== meetingId &&
-          incomingMeetingId !== Number(meetingId)
-        ) {
-          return;
-        }
-
-        const normalized = {
-          ...msg,
-          createdAt: msg.createdAt || new Date().toISOString(),
-          senderEmail: msg.senderEmail || msg.userEmail || auth?.user?.email,
-          senderName: msg.senderName || msg.userName || msg.displayName,
-        };
-
-        setLiveMessages((current) => [...current, normalized]);
-      } catch (error) {
-        console.warn('[WarRoom chat] Error parsing WebSocket message:', error?.message);
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.warn('[WarRoom chat] WebSocket error:', error);
-    };
-
-    socket.onclose = () => {
-      if (chatSocketRef.current === socket) {
-        chatSocketRef.current = null;
-      }
-    };
-
-    return () => {
-      if (chatSocketRef.current === socket) {
-        try {
-          if (
-            socket.readyState === WebSocket.OPEN ||
-            socket.readyState === WebSocket.CONNECTING
-          ) {
-            socket.close();
-          }
-        } catch (_) {}
-        chatSocketRef.current = null;
-      }
-    };
-  }, [settings.apiBaseUrl, meetingId, auth?.user?.email]);
-
-
-  // Scroll automático al final del chat cuando haya nuevos mensajes
-  useEffect(() => {
-    if (!chatMessagesRef.current) return;
-    const container = chatMessagesRef.current;
-    container.scrollTop = container.scrollHeight;
-  }, [messages.length]);
-  // ID que usaremos para backend y WebSocket (normalizado)
-const meetingIdNormalized = useMemo(() => {
-  if (!meetingId) return null;
-  const numeric = Number(meetingId);
-  return Number.isNaN(numeric) ? meetingId : numeric;
-}, [meetingId]);
-
-
-const handleSubmit = async (event) => {
-  event.preventDefault();
-  const trimmed = message.trim();
-  if (!trimmed || !meetingId) return;
-
-  // 1) Mensaje local optimista
-  const localMessage = {
-    id: `local-${Date.now()}`,
-    meetingId: meetingIdNormalized ?? meetingId,
-    content: trimmed,
-    role: 'user',
-    createdAt: new Date().toISOString(),
-    senderEmail: auth?.user?.email || null,
-    senderName: auth?.user?.name || auth?.user?.fullName || null,
-  };
-
-  setLiveMessages((current) => [...current, localMessage]);
-
-  // 2) WebSocket para los demás
-  try {
-    const socket = chatSocketRef.current;
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      const payload = {
-        meetingId: localMessage.meetingId,
-        content: trimmed,
-        senderEmail: localMessage.senderEmail,
-        senderName: localMessage.senderName,
-      };
-      socket.send(JSON.stringify(payload));
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!message.trim()) return;
+    
+    try {
+      await sendWarRoomMessage(warRoomId, message.trim());
+      setMessage('');
+      // Give backend time to persist and broadcast, then reload
+      setTimeout(() => loadWarRoomMessages(warRoomId), 200);
+    } catch (error) {
+      console.error('Failed to send message:', error);
     }
-  } catch (error) {
-    console.warn('[WarRoom chat] WebSocket send failed:', error?.message);
-  }
-
-  // 3) Persistir en backend: usar SIEMPRE meetingId
-  try {
-    await sendWarRoomMessage(meetingId, trimmed);
-  } catch (error) {
-    console.warn('[WarRoom chat] Error saving message:', error?.message);
-  }
-
-  setMessage('');
-};
-
-
-
-
-  const handleChecklistToggle = (itemId) => {
-    setLocalChecklist((current) => {
-      const updated = current.map((item) =>
-        item.id === itemId ? { ...item, done: !item.done } : item,
-      );
-      updateWarRoomChecklist(warRoomId, updated);
-      return updated;
-    });
   };
+
+
 
   const handleMarkContained = async () => {
     if (!isAdmin(auth?.user)) {
@@ -766,26 +641,14 @@ const handleSubmit = async (event) => {
       <div className="war-room-layout">
         <section className="panel chat-panel" aria-labelledby="chat-heading">
           <header>
-            <h3 id="chat-heading">Chat con IA de respuesta</h3>
-            <span>Actualiza en tiempo real</span>
+            <h3 id="chat-heading">💬 Chat del equipo</h3>
+            <span>Conversación grupal - Actualiza cada 10 segundos</span>
           </header>
-          <div
-            className="chat-messages"
-            aria-live="polite"
-            ref={chatMessagesRef}
-            style={{
-              height: '280px',
-              maxHeight: '280px',
-              overflowY: 'auto',
-            }}
-          >
-            {messages.map((item, index) => (
-              <article
-                key={item.id ?? `${item.createdAt || ''}-${index}`}
-                className={`chat-message chat-${item.role}`}
-              >
+          <div className="chat-messages" aria-live="polite">
+            {messages.filter(item => item && item.id).map((item) => (
+              <article key={item.id} className={`chat-message chat-${item.role}`}>
                 <header>
-                  <span>{getMessageSenderLabel(item)}</span>
+                  <span>{item.role === 'assistant' ? 'Asistente' : item.senderEmail || 'Analista'}</span>
                   <time dateTime={item.createdAt}>{formatTimestamp(item.createdAt)}</time>
                 </header>
                 <p>{item.content}</p>
@@ -801,7 +664,7 @@ const handleSubmit = async (event) => {
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Describe el siguiente paso o pregunta a la IA."
+              placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
               required
                 style={{
                   minHeight: '56px',
@@ -817,24 +680,15 @@ const handleSubmit = async (event) => {
           </form>
         </section>
 
-        <aside className="panel checklist-panel" aria-labelledby="checklist-heading">
-          <header>
-            <h3 id="checklist-heading">Checklist sugerida</h3>
-          </header>
-          <ul className="checklist">
-            {localChecklist.map((item) => (
-              <li key={item.id}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={() => handleChecklistToggle(item.id)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
+        <aside className="panel ai-private-panel ai-private-panel-large">
+          <AIPrivateChat
+            warRoomId={warRoomId}
+            privateMessages={warRoom?.privateMessages}
+            loading={loading.warRoom}
+            onSendMessage={sendAIPrivateMessage}
+            onLoadMessages={loadAIPrivateMessages}
+            isAdmin={isAdmin(auth?.user)}
+          />
         </aside>
       </div>
 

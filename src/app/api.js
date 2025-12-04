@@ -121,10 +121,24 @@ const mapAlertToIncident = (alert, overrides = {}) => {
   const mlDescription = deriveMlDescription({ standardProtocol, prediction, category, attackProbability });
   const mlChecklist = extractMlChecklist(standardProtocol);
 
+  // Normalize severity values from backend to lowercase Spanish
+  const normalizeSeverity = (sev) => {
+    if (!sev) return 'baja';
+    const lower = String(sev).toLowerCase();
+    // Map English and Spanish variations
+    if (lower === 'critical' || lower === 'critico') return 'critica';
+    if (lower === 'high' || lower === 'alto') return 'alta';
+    if (lower === 'medium' || lower === 'medio') return 'media';
+    if (lower === 'low' || lower === 'bajo') return 'baja';
+    if (lower === 'conocido') return 'conocido';
+    if (lower === 'falso_positivo' || lower === 'falso-positivo') return 'falso-positivo';
+    return lower;
+  };
+
   return {
     id: alert.incidentId || `alert-${alert.id}`,
     source: alert.packetId,
-    severity: alert.severity,
+    severity: normalizeSeverity(alert.severity),
     createdAt: alert.timestamp,
     detection: {
       model_version: alert.modelVersion || alert.model_version,
@@ -180,7 +194,7 @@ export async function authLogout() {
 
 // --- Incidentes (Alertas en Backend_IDS) ---
 
-export async function getIncidents(filters = {}, baseUrl = 'http://localhost:8080') {
+export async function getIncidents(filters = {}, baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') {
   // Backend_IDS uses /api/alerts instead of /incidents
   // Ensure we have a valid baseUrl
   const limit = filters.limit || 1000;  // Request up to 1000 alerts by default
@@ -245,22 +259,27 @@ export async function joinMeeting(code, baseUrl) {
 }
 
 export async function getWarRoomMessages(warRoomId, baseUrl) {
-  if (!warRoomId) return [];
-  // Usa el endpoint correcto: /api/warroom/messages?meetingId=...
-  const path = `/api/warroom/messages?meetingId=${encodeURIComponent(warRoomId)}`;
-  try {
-    const messages = await get(baseUrl, path);
-    if (!Array.isArray(messages)) return [];
-    return messages.map((msg) => ({
-      ...msg,
-      createdAt: msg.createdAt || msg.timestamp || new Date().toISOString(),
-      senderEmail: msg.senderEmail || msg.userEmail || null,
-      senderName: msg.senderName || msg.userName || msg.displayName || null,
-    }));
-  } catch (error) {
-    console.warn('[api] getWarRoomMessages error:', error?.message);
-    return [];
-  }
+  const messages = await get(baseUrl, '/api/warroom/messages', { meetingId: warRoomId });
+  // Transform backend format to frontend format
+  return messages.map(msg => ({
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    createdAt: msg.createdAt,
+    senderEmail: msg.senderEmail
+  }));
+}
+
+// --- AI Private Chat ---------------------------------------------------
+
+export async function getAIPrivateMessages(warRoomId, baseUrl) {
+  // Get private AI chat messages for the current user in this meeting
+  return get(baseUrl, `/api/ai-chat/meeting/${warRoomId}`);
+}
+
+export async function sendAIPrivateMessage(warRoomId, content, baseUrl) {
+  // Send a private message to AI assistant
+  return post(baseUrl, `/api/ai-chat/meeting/${warRoomId}`, { content });
 }
 
 export async function leaveMeeting(meetingId, baseUrl) {
@@ -269,32 +288,24 @@ export async function leaveMeeting(meetingId, baseUrl) {
 }
 
 export async function postWarRoomMessage(warRoomId, message, baseUrl) {
-  // POST real al backend para persistir el mensaje
-  if (!warRoomId || !message?.content) throw new Error('Faltan datos para enviar el mensaje');
-  const path = '/api/warroom/messages';
-  const payload = {
+  const response = await post(baseUrl, '/api/warroom/messages', {
     meetingId: warRoomId,
     content: message.content,
-    role: message.role || 'user',
+    role: message.role || 'user'
+  });
+  // Backend returns single message, but frontend expects { userMessage, assistantMessage }
+  const userMessage = {
+    id: response.id,
+    role: response.role,
+    content: response.content,
+    createdAt: response.createdAt,
+    senderEmail: response.senderEmail
   };
-  try {
-    const response = await post(baseUrl, path, payload);
-    return {
-      userMessage: {
-        id: response.id,
-        meetingId: response.meetingId,
-        content: response.content,
-        role: response.role,
-        createdAt: response.createdAt,
-        senderEmail: response.senderEmail,
-        senderName: response.senderName,
-      },
-      assistantMessage: null
-    };
-  } catch (error) {
-    console.warn('[api] postWarRoomMessage error:', error?.message);
-    throw error;
-  }
+  // Chat doesn't have AI assistant response, only user messages
+  return {
+    userMessage,
+    assistantMessage: null
+  };
 }
 
 // --- Tráfico --------------------------------------------------------------
@@ -307,7 +318,7 @@ export async function getTrafficPacketById(packetId, baseUrl) {
   return get(baseUrl, `/traffic/packets/${packetId}`);
 }
 
-export async function uploadTrafficFile(file, baseUrl = 'http://localhost:8080') {
+export async function uploadTrafficFile(file, baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') {
   const token = getAuthToken();
   const formData = new FormData();
   formData.append('file', file);
@@ -362,17 +373,30 @@ export async function markIncidentAsResolved(meetingId, baseUrl) {
 
 // --- WebSocket ------------------------------------------------------------
 
-// WebSocket connection for alerts and meeting events
-export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+function createWebSocketConnection({
+  baseUrl,
+  path,
+  onOpen,
+  onMessage,
+  onClose,
+  onError,
+  messageFilter,
+}) {
   let closedExplicitly = false;
   let currentSocket = null;
   let retryTimer = null;
 
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    // Use the existing WebSocket endpoint that's already implemented in backend
-    let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
-    return target;
+    return normalized.replace(/^http/, 'ws') + path;
+  };
+
+  const scheduleReconnect = () => {
+    if (retryTimer || closedExplicitly) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      setupSocket();
+    }, 5000);
   };
 
   const setupSocket = () => {
@@ -389,10 +413,12 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
     currentSocket.addEventListener('open', () => onOpen?.());
     currentSocket.addEventListener('message', (event) => {
       try {
-        const payload = JSON.parse(event.data);
-        if (payload?.type) onEvent?.(payload.type, payload);
+        const data = JSON.parse(event.data);
+        if (!messageFilter || messageFilter(data)) {
+          onMessage?.(data);
+        }
       } catch (error) {
-        console.warn('WebSocket: Failed to parse message:', error.message);
+        onError?.(error);
       }
     });
 
@@ -407,14 +433,6 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
     });
   };
 
-  const scheduleReconnect = () => {
-    if (retryTimer || closedExplicitly) return;
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      setupSocket();
-    }, 5000);
-  };
-
   setupSocket();
 
   return {
@@ -423,7 +441,39 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
       if (retryTimer) clearTimeout(retryTimer);
       currentSocket?.close();
     },
+    send(message) {
+      if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.send(JSON.stringify(message));
+      }
+    },
   };
+}
+
+// WebSocket connection for alerts and meeting events
+export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+  return createWebSocketConnection({
+    baseUrl,
+    path: '/traffic/stream',
+    onOpen,
+    onClose,
+    onError,
+    onMessage: (payload) => {
+      if (payload?.type) onEvent?.(payload.type, payload);
+    },
+  });
+}
+
+// WebSocket connection for War Room chat (real-time messaging)
+export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onOpen, onClose, onError } = {}) {
+  return createWebSocketConnection({
+    baseUrl,
+    path: '/ws/warroom/chat',
+    onOpen,
+    onClose,
+    onError,
+    onMessage: (data) => onMessage?.(data),
+    messageFilter: (data) => data?.meetingId === String(meetingId) || data?.meetingId === meetingId,
+  });
 }
 
 // --- Export agrupado ------------------------------------------------------
@@ -441,6 +491,8 @@ export const api = {
   postIncidentWarRoom,
   getWarRoomMessages,
   postWarRoomMessage,
+  getAIPrivateMessages,
+  sendAIPrivateMessage,
   getTrafficRecent, 
   getTrafficPacketById,
   connectAlertsWebSocket,
