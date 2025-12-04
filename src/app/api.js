@@ -391,17 +391,30 @@ export async function markIncidentAsResolved(meetingId, baseUrl) {
 
 // --- WebSocket ------------------------------------------------------------
 
-// WebSocket connection for alerts and meeting events
-export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+function createWebSocketConnection({
+  baseUrl,
+  path,
+  onOpen,
+  onMessage,
+  onClose,
+  onError,
+  messageFilter,
+}) {
   let closedExplicitly = false;
   let currentSocket = null;
   let retryTimer = null;
 
   const buildWsUrl = () => {
     const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    // Use the existing WebSocket endpoint that's already implemented in backend
-    let target = normalized.replace(/^http/, 'ws') + '/traffic/stream';
-    return target;
+    return normalized.replace(/^http/, 'ws') + path;
+  };
+
+  const scheduleReconnect = () => {
+    if (retryTimer || closedExplicitly) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      setupSocket();
+    }, 5000);
   };
 
   const setupSocket = () => {
@@ -418,79 +431,12 @@ export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onEr
     currentSocket.addEventListener('open', () => onOpen?.());
     currentSocket.addEventListener('message', (event) => {
       try {
-        const payload = JSON.parse(event.data);
-        if (payload?.type) onEvent?.(payload.type, payload);
-      } catch (error) {
-        console.warn('WebSocket: Failed to parse message:', error.message);
-      }
-    });
-
-    currentSocket.addEventListener('close', () => {
-      onClose?.();
-      if (!closedExplicitly) scheduleReconnect();
-    });
-
-    currentSocket.addEventListener('error', (event) => {
-      onError?.(event);
-      if (!closedExplicitly) currentSocket?.close();
-    });
-  };
-
-  const scheduleReconnect = () => {
-    if (retryTimer || closedExplicitly) return;
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      setupSocket();
-    }, 5000);
-  };
-
-  setupSocket();
-
-  return {
-    close() {
-      closedExplicitly = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      currentSocket?.close();
-    },
-  };
-}
-
-// WebSocket connection for War Room chat (real-time messaging)
-export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onOpen, onClose, onError } = {}) {
-  let closedExplicitly = false;
-  let currentSocket = null;
-  let retryTimer = null;
-
-  const buildWsUrl = () => {
-    const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    let target = normalized.replace(/^http/, 'ws') + '/ws/warroom/chat';
-    return target;
-  };
-
-  const setupSocket = () => {
-    if (closedExplicitly) return;
-    try {
-      const wsUrl = buildWsUrl();
-      currentSocket = new WebSocket(wsUrl);
-    } catch (error) {
-      onError?.(error);
-      scheduleReconnect();
-      return;
-    }
-
-    currentSocket.addEventListener('open', () => {
-      onOpen?.();
-    });
-
-    currentSocket.addEventListener('message', (event) => {
-      try {
-        const messageData = JSON.parse(event.data);
-        // Only process messages for this meeting
-        if (messageData.meetingId === String(meetingId) || messageData.meetingId === meetingId) {
-          onMessage?.(messageData);
+        const data = JSON.parse(event.data);
+        if (!messageFilter || messageFilter(data)) {
+          onMessage?.(data);
         }
       } catch (error) {
-        console.warn('War Room Chat WebSocket: Failed to parse message:', error.message);
+        onError?.(error);
       }
     });
 
@@ -503,14 +449,6 @@ export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onO
       onError?.(event);
       if (!closedExplicitly) currentSocket?.close();
     });
-  };
-
-  const scheduleReconnect = () => {
-    if (retryTimer || closedExplicitly) return;
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      setupSocket();
-    }, 5000);
   };
 
   setupSocket();
@@ -525,8 +463,35 @@ export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onO
       if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
         currentSocket.send(JSON.stringify(message));
       }
-    }
+    },
   };
+}
+
+// WebSocket connection for alerts and meeting events
+export function connectAlertsWebSocket(baseUrl, onEvent, { onOpen, onClose, onError } = {}) {
+  return createWebSocketConnection({
+    baseUrl,
+    path: '/traffic/stream',
+    onOpen,
+    onClose,
+    onError,
+    onMessage: (payload) => {
+      if (payload?.type) onEvent?.(payload.type, payload);
+    },
+  });
+}
+
+// WebSocket connection for War Room chat (real-time messaging)
+export function connectWarRoomChatWebSocket(baseUrl, meetingId, onMessage, { onOpen, onClose, onError } = {}) {
+  return createWebSocketConnection({
+    baseUrl,
+    path: '/ws/warroom/chat',
+    onOpen,
+    onClose,
+    onError,
+    onMessage: (data) => onMessage?.(data),
+    messageFilter: (data) => data?.meetingId === String(meetingId) || data?.meetingId === meetingId,
+  });
 }
 
 // --- Export agrupado ------------------------------------------------------
