@@ -153,6 +153,9 @@ function WarRoom({ params }) {
     description: '',
     icon: '🔄'
   });
+  
+  // Ref para auto-scroll del chat
+  const chatMessagesEndRef = useRef(null);
 
   const incidentId = useMemo(() => {
     if (warRoom?.incidentId) return warRoom.incidentId;
@@ -274,6 +277,12 @@ function WarRoom({ params }) {
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
+    
+    // Helper function to check if the payload warRoomId matches current warRoomId
+    const isWarRoomMatch = (payloadWarRoomId) => {
+      return payloadWarRoomId && payloadWarRoomId.toString() === warRoomId.toString();
+    };
+    
     const handleWebSocketEvent = (eventType, payload) => {
       // Handle warroom participant updates
       if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
@@ -362,7 +371,12 @@ function WarRoom({ params }) {
     return () => globalThis.clearInterval(interval);
   }, [meetingId, loadWarRoomMessages]);
 
-
+  // Auto-scroll del chat cuando lleguen mensajes nuevos
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
@@ -613,7 +627,7 @@ function WarRoom({ params }) {
             <h3 id="chat-heading">💬 Chat del equipo</h3>
             <span>Conversación grupal - Actualiza cada 10 segundos</span>
           </header>
-          <div className="chat-messages" aria-live="polite">
+          <div className="chat-messages" aria-live="polite" style={{ height: '400px', overflowY: 'auto' }}>
             {messages.filter(item => item && item.id).map((item) => (
               <article key={item.id} className={`chat-message chat-${item.role}`}>
                 <header>
@@ -623,6 +637,7 @@ function WarRoom({ params }) {
                 <p>{item.content}</p>
               </article>
             ))}
+            <div ref={chatMessagesEndRef} />
           </div>
           <form className="chat-form" onSubmit={handleSubmit}>
             <label htmlFor="chat-input" className="sr-only">
