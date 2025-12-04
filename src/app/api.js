@@ -306,6 +306,24 @@ export async function postWarRoomMessage(warRoomId, message, baseUrl) {
     userMessage,
     assistantMessage: null
   };
+  try {
+    const response = await post(baseUrl, path, payload);
+    return {
+      userMessage: {
+        id: response.id,
+        meetingId: response.meetingId,
+        content: response.content,
+        role: response.role,
+        createdAt: response.createdAt,
+        senderEmail: response.senderEmail,
+        senderName: response.senderName,
+      },
+      assistantMessage: null
+    };
+  } catch (error) {
+    console.warn('[api] postWarRoomMessage error:', error?.message);
+    throw error;
+  }
 }
 
 // --- Tráfico --------------------------------------------------------------

@@ -29,6 +29,14 @@ const ROUTES = [
     private: true,
   },
   {
+    key: 'incident-detail',
+    path: '#/incident/:id',
+    pattern: /^#\/incident\/([^/]+)$/,
+    loader: () => import('../pages/IncidentDetail.jsx'),
+    mapParams: (match) => ({ id: decodeURIComponent(match[1]) }),
+    private: true,
+  },
+  {
     key: 'war-room',
     path: '#/war-room/:id',
     pattern: /^#\/war-room\/([^/]+)$/,
@@ -134,6 +142,8 @@ export function getRouteHash(key, params = {}) {
     case 'dashboard':
       return '#/dashboard';
     case 'incident':
+      return `#/incident/${encodeURIComponent(params.id)}`;
+    case 'incident-detail':
       return `#/incident/${encodeURIComponent(params.id)}`;
     case 'war-room':
       return `#/war-room/${encodeURIComponent(params.id)}`;
