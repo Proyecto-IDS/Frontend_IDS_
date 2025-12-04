@@ -273,11 +273,6 @@ function WarRoom({ params }) {
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
-    
-    if (eventType === 'warroom.duration' && isWarRoomMatch(payload.warRoomId)) {
-      openWarRoom(incidentId);
-    }
-    
     const handleWebSocketEvent = (eventType, payload) => {
       // Handle warroom participant updates
       if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
@@ -289,6 +284,11 @@ function WarRoom({ params }) {
         openWarRoom(incidentId);
       }
       
+      // Handle new chat messages
+      if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
+        loadWarRoomMessages(warRoomId);
+      }
+
       // Handle warroom resolution events
       if (eventType === 'warroom.resolved' && isWarRoomMatch(payload.warRoomId)) {
         addToast({
@@ -301,23 +301,13 @@ function WarRoom({ params }) {
         navigate(hash);
       }
     };
-
     const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
-      onOpen: () => {
-
-    if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
-      // 👇 recarga mensajes de ESTA reunión por meetingId
-      loadWarRoomMessages(meetingId);
-    }
-  };
-
-  const socket = connectAlertsWebSocket(settings.apiBaseUrl, handleWebSocketEvent, {
-    onOpen: () => {},
-    onClose: () => {},
-    onError: (error) => {
-      console.warn('WarRoom: WebSocket error:', error);
-    },
-  });
+      onOpen: () => {},
+      onClose: () => {},
+      onError: (error) => {
+        console.warn('WarRoom: WebSocket error:', error);
+      },
+    });
 
     return () => {
       socket.close();
