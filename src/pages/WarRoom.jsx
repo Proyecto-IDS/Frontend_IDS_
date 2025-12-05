@@ -472,6 +472,12 @@ function WarRoom({ params }) {
     }
   };
 
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSubmit(event);
+    }
+  };
 
 
   const handleMarkContained = async () => {
@@ -649,6 +655,7 @@ function WarRoom({ params }) {
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
               required
                 style={{
