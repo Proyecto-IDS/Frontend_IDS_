@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
-import { connectAlertsWebSocket, connectWarRoomChatWebSocket } from '../app/api.js';
+import { connectAlertsWebSocket, connectWarRoomChatWebSocket, getAlertMLMetrics } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 import AIPrivateChat from '../components/AIPrivateChat.jsx';
+import Tag from '../components/Tag.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -88,7 +89,8 @@ const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 100
 
 function WarRoom({ params }) {
   const warRoomId = params.id;
-  const { warRooms, loading, auth, settings } = useAppState();
+  const state = useAppState();
+  const { warRooms, loading, auth, settings } = state;
   const {
     openWarRoom,
     loadWarRoomMessages,
@@ -143,6 +145,11 @@ function WarRoom({ params }) {
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
   
+  // Estado para métricas ML
+  const [mlMetrics, setMlMetrics] = useState(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [metricsLoaded, setMetricsLoaded] = useState(false);
+  
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
   
@@ -162,6 +169,63 @@ function WarRoom({ params }) {
     if (warRoomId?.startsWith('WR-')) return warRoomId.substring(3);
     return warRoomId;
   }, [warRoom, warRoomId]);
+
+  // Función para cargar métricas ML
+  const loadMLMetrics = async (alertId) => {
+    if (!alertId || !settings.apiBaseUrl) return;
+    
+    setLoadingMetrics(true);
+    try {
+      const data = await getAlertMLMetrics(settings.apiBaseUrl, alertId);
+      setMlMetrics(data);
+      setMetricsLoaded(true);
+    } catch (error) {
+      console.error('Error loading ML metrics:', error);
+      setMlMetrics(null);
+      setMetricsLoaded(true);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  };
+
+  // Cargar métricas cuando tengamos el alertId (solo una vez)
+  useEffect(() => {
+    if (metricsLoaded) return; // Si ya se cargaron, no volver a cargar
+    
+    // Intentar obtener el alertId desde diferentes fuentes
+    let alertId = null;
+    
+    // 1. Verificar si warRoom tiene alertId directamente
+    if (warRoom?.alertId) {
+      alertId = warRoom.alertId;
+    }
+    // 2. Buscar el incidente en el state y obtener su _alertId
+    else if (incidentId) {
+      const incident = Object.values(state.incidents || {}).find(
+        inc => inc.id === incidentId || inc.id === warRoom?.incidentId
+      );
+      if (incident?._alertId) {
+        alertId = incident._alertId;
+      }
+    }
+    // 3. Si el incidentId tiene formato INC-XXX, intentar buscar por ese ID
+    else if (warRoom?.incidentId) {
+      const incident = Object.values(state.incidents || {}).find(
+        inc => inc.id === warRoom.incidentId
+      );
+      if (incident?._alertId) {
+        alertId = incident._alertId;
+      }
+    }
+    
+    if (alertId && settings.apiBaseUrl) {
+      console.log('[WarRoom] Cargando métricas ML para alertId:', alertId);
+      loadMLMetrics(alertId);
+    } else {
+      console.warn('[WarRoom] No se pudo determinar el alertId para cargar métricas ML');
+      setMetricsLoaded(true); // Marcar como cargado para evitar intentos infinitos
+    }
+  }, [warRoom?.alertId, warRoom?.incidentId, incidentId, state.incidents, settings.apiBaseUrl, metricsLoaded]);
 
   // Efecto para calcular la duración en tiempo real
   useEffect(() => {
@@ -273,6 +337,12 @@ function WarRoom({ params }) {
       }
     };
   }, [leaveWarRoom]);
+
+  // Helper function to match warRoom IDs
+  const isWarRoomMatch = (payloadWarRoomId) => {
+    if (!payloadWarRoomId) return false;
+    return payloadWarRoomId === warRoomId || payloadWarRoomId === meetingId || payloadWarRoomId === warRoom?.id;
+  };
 
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
@@ -562,6 +632,146 @@ function WarRoom({ params }) {
     }
   };
 
+  // Helper para obtener tono de severidad
+  const getSeverityTone = (severity) => {
+    if (!severity) return 'muted';
+    const lower = String(severity).toLowerCase();
+    if (lower.includes('critica') || lower === 'critical') return 'danger';
+    if (lower.includes('alta') || lower === 'high') return 'warn';
+    if (lower.includes('media') || lower === 'medium') return 'info';
+    if (lower.includes('falso') || lower.includes('false')) return 'info';
+    return 'success';
+  };
+
+  // Memorizar el panel de métricas para evitar re-renders
+  const mlMetricsPanel = useMemo(() => {
+    if (loadingMetrics) {
+      return (
+        <section className="panel ml-metrics-panel">
+          <header>
+            <h3>📊 Métricas del Modelo ML</h3>
+          </header>
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <Loader label="Cargando métricas..." />
+          </div>
+        </section>
+      );
+    }
+
+    if (!mlMetrics) {
+      return (
+        <section className="panel ml-metrics-panel">
+          <header>
+            <h3>Métricas del Modelo ML</h3>
+          </header>
+          <div className="ml-metrics-empty">
+            <p>No hay métricas disponibles para esta alerta.</p>
+          </div>
+        </section>
+      );
+    }
+
+    // Extraer top 5 probabilidades más altas
+    const topProbabilities = Object.entries(mlMetrics.probabilities || {})
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5);
+
+    const allProbabilities = Object.entries(mlMetrics.probabilities || {})
+      .sort(([, a], [, b]) => b - a);
+
+    return (
+      <section className="panel ml-metrics-panel">
+        <header>
+          <h3>Métricas del Modelo ML</h3>
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+            Análisis de probabilidades del modelo
+          </span>
+        </header>
+        
+        <div className="ml-metrics-content">
+          {/* Información principal */}
+          <div className="ml-summary">
+            <div className="ml-info-item">
+              <span className="ml-label">Predicción:</span>
+              <Tag tone={mlMetrics.prediction === 'normal' ? 'success' : 'danger'}>
+                {mlMetrics.prediction || '—'}
+              </Tag>
+            </div>
+            
+            <div className="ml-info-item">
+              <span className="ml-label">Estado:</span>
+              <Tag tone={getSeverityTone(mlMetrics.state)}>
+                {mlMetrics.state || '—'}
+              </Tag>
+            </div>
+            
+            {mlMetrics.category && (
+              <div className="ml-info-item">
+                <span className="ml-label">Categoría:</span>
+                <span className="ml-value">{mlMetrics.category}</span>
+              </div>
+            )}
+            
+            <div className="ml-info-item">
+              <span className="ml-label">Prob. de ataque:</span>
+              <span className="ml-value ml-probability">
+                {mlMetrics.attack_probability !== null && mlMetrics.attack_probability !== undefined
+                  ? `${(mlMetrics.attack_probability * 100).toFixed(2)}%`
+                  : '—'}
+              </span>
+            </div>
+          </div>
+          
+          {/* Top 5 probabilidades */}
+          {topProbabilities.length > 0 && (
+            <details open>
+              <summary>Top 5 Probabilidades</summary>
+              <div className="probabilities-list">
+                {topProbabilities.map(([type, prob]) => (
+                  <div key={type} className="probability-item">
+                    <span className="prob-label">{type}</span>
+                    <div className="prob-bar-container">
+                      <div 
+                        className="prob-bar" 
+                        style={{ width: `${prob * 100}%` }}
+                      />
+                    </div>
+                    <span className="prob-value">{(prob * 100).toFixed(2)}%</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+          
+          {/* Protocolo estándar */}
+          {mlMetrics.standard_protocol && (
+            <details>
+              <summary>Protocolo Estándar</summary>
+              <div className="protocol-content">
+                {mlMetrics.standard_protocol}
+              </div>
+            </details>
+          )}
+          
+          {/* Todas las probabilidades */}
+          {allProbabilities.length > 0 && (
+            <details>
+              <summary>Todas las Probabilidades ({allProbabilities.length})</summary>
+              <div className="all-probabilities">
+                {allProbabilities.map(([type, prob]) => (
+                  <div key={type} className="prob-row">
+                    <span className="prob-type">{type}</span>
+                    <span className="prob-percent">{(prob * 100).toFixed(4)}%</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      </section>
+    );
+  }, [mlMetrics, loadingMetrics]);
+
   if (loading.warRoom && !warRoom) {
     return (
       <div className="page">
@@ -628,6 +838,19 @@ function WarRoom({ params }) {
       </header>
 
       <div className="war-room-layout">
+        {mlMetricsPanel}
+
+        <aside className="panel ai-private-panel">
+          <AIPrivateChat
+            warRoomId={warRoomId}
+            privateMessages={warRoom?.privateMessages}
+            loading={loading.warRoom}
+            onSendMessage={sendAIPrivateMessage}
+            onLoadMessages={loadAIPrivateMessages}
+            isAdmin={isAdmin(auth?.user)}
+          />
+        </aside>
+
         <section className="panel chat-panel" aria-labelledby="chat-heading">
           <header>
             <h3 id="chat-heading">💬 Chat del equipo</h3>
@@ -637,7 +860,7 @@ function WarRoom({ params }) {
             {messages.filter(item => item && item.id).map((item) => (
               <article key={item.id} className={`chat-message chat-${item.role}`}>
                 <header>
-                  <span>{item.role === 'assistant' ? 'Asistente' : item.senderEmail || 'Analista'}</span>
+                  <span>{getMessageSenderLabel(item)}</span>
                   <time dateTime={item.createdAt}>{formatTimestamp(item.createdAt)}</time>
                 </header>
                 <p>{item.content}</p>
@@ -671,17 +894,6 @@ function WarRoom({ params }) {
             </div>
           </form>
         </section>
-
-        <aside className="panel ai-private-panel ai-private-panel-large">
-          <AIPrivateChat
-            warRoomId={warRoomId}
-            privateMessages={warRoom?.privateMessages}
-            loading={loading.warRoom}
-            onSendMessage={sendAIPrivateMessage}
-            onLoadMessages={loadAIPrivateMessages}
-            isAdmin={isAdmin(auth?.user)}
-          />
-        </aside>
       </div>
 
       <ConfirmDialog
