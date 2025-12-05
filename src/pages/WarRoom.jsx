@@ -89,7 +89,8 @@ const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 100
 
 function WarRoom({ params }) {
   const warRoomId = params.id;
-  const { warRooms, loading, auth, settings } = useAppState();
+  const state = useAppState();
+  const { warRooms, loading, auth, settings } = state;
   const {
     openWarRoom,
     loadWarRoomMessages,
@@ -147,7 +148,7 @@ function WarRoom({ params }) {
   // Estado para métricas ML
   const [mlMetrics, setMlMetrics] = useState(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
-  const [currentAlertId, setCurrentAlertId] = useState(null);
+  const [metricsLoaded, setMetricsLoaded] = useState(false);
   
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
@@ -174,25 +175,54 @@ function WarRoom({ params }) {
     try {
       const data = await getAlertMLMetrics(settings.apiBaseUrl, alertId);
       setMlMetrics(data);
-      setCurrentAlertId(alertId);
+      setMetricsLoaded(true);
     } catch (error) {
       console.error('Error loading ML metrics:', error);
       setMlMetrics(null);
-      setCurrentAlertId(alertId);
+      setMetricsLoaded(true);
     } finally {
       setLoadingMetrics(false);
     }
   };
 
-  // Cargar métricas cuando tengamos el alertId
+  // Cargar métricas cuando tengamos el alertId (solo una vez)
   useEffect(() => {
-    const alertId = warRoom?.alertId || warRoom?.incidentId || incidentId;
+    if (metricsLoaded) return; // Si ya se cargaron, no volver a cargar
     
-    // Solo cargar si el alertId cambió
-    if (alertId && alertId !== currentAlertId && settings.apiBaseUrl) {
-      loadMLMetrics(alertId);
+    // Intentar obtener el alertId desde diferentes fuentes
+    let alertId = null;
+    
+    // 1. Verificar si warRoom tiene alertId directamente
+    if (warRoom?.alertId) {
+      alertId = warRoom.alertId;
     }
-  }, [warRoom?.alertId, warRoom?.incidentId, incidentId, currentAlertId, settings.apiBaseUrl]);
+    // 2. Buscar el incidente en el state y obtener su _alertId
+    else if (incidentId) {
+      const incident = Object.values(state.incidents || {}).find(
+        inc => inc.id === incidentId || inc.id === warRoom?.incidentId
+      );
+      if (incident?._alertId) {
+        alertId = incident._alertId;
+      }
+    }
+    // 3. Si el incidentId tiene formato INC-XXX, intentar buscar por ese ID
+    else if (warRoom?.incidentId) {
+      const incident = Object.values(state.incidents || {}).find(
+        inc => inc.id === warRoom.incidentId
+      );
+      if (incident?._alertId) {
+        alertId = incident._alertId;
+      }
+    }
+    
+    if (alertId && settings.apiBaseUrl) {
+      console.log('[WarRoom] Cargando métricas ML para alertId:', alertId);
+      loadMLMetrics(alertId);
+    } else {
+      console.warn('[WarRoom] No se pudo determinar el alertId para cargar métricas ML');
+      setMetricsLoaded(true); // Marcar como cargado para evitar intentos infinitos
+    }
+  }, [warRoom?.alertId, warRoom?.incidentId, incidentId, state.incidents, settings.apiBaseUrl, metricsLoaded]);
 
   // Efecto para calcular la duración en tiempo real
   useEffect(() => {
@@ -304,6 +334,12 @@ function WarRoom({ params }) {
       }
     };
   }, [leaveWarRoom]);
+
+  // Helper function to match warRoom IDs
+  const isWarRoomMatch = (payloadWarRoomId) => {
+    if (!payloadWarRoomId) return false;
+    return payloadWarRoomId === warRoomId || payloadWarRoomId === meetingId || payloadWarRoomId === warRoom?.id;
+  };
 
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
