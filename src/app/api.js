@@ -359,6 +359,10 @@ export async function getAlertsTodayCount(baseUrl) {
   return get(baseUrl, '/api/alerts/today/count');
 }
 
+export async function getAlertMLMetrics(baseUrl, alertId) {
+  return get(baseUrl, `/api/alerts/${alertId}/ml-metrics`);
+}
+
 export async function getResolvedIncidents(baseUrl) {
   const alerts = await get(baseUrl, '/api/alerts/resolved');
   
@@ -500,6 +504,7 @@ export const api = {
   getAlertsBySeverity,
   getAlertsToday,
   getAlertsTodayCount,
+  getAlertMLMetrics,
   getResolvedIncidents,
   markIncidentAsResolved,
 };
