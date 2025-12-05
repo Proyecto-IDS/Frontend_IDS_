@@ -9,6 +9,8 @@ import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 import AIPrivateChat from '../components/AIPrivateChat.jsx';
 import Tag from '../components/Tag.jsx';
+import Top5Probabilities from '../components/Top5Probabilities.jsx';
+import AllProbabilitiesChart from '../components/AllProbabilitiesChart.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -88,7 +90,11 @@ const isSameChatMessage = (a, b) => {
 const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 10000);
 
 function WarRoom({ params }) {
+    // Ref para el contenedor de mensajes del chat de equipo
+    const teamChatMessagesRef = useRef(null);
   const warRoomId = params.id;
+  // Estado para mostrar el modal de probabilidades
+  const [showProbModal, setShowProbModal] = useState(false);
   const state = useAppState();
   const { warRooms, loading, auth, settings } = state;
   const {
@@ -141,6 +147,23 @@ function WarRoom({ params }) {
   const warRoom = warRooms[warRoomId];
   const meetingId = warRoom?.id;
   const messages = Array.isArray(warRoom?.messages) ? warRoom.messages : [];
+
+  // Scroll automático al fondo cuando llegan nuevos mensajes al chat de equipo.
+  // FORZAR: siempre desplazar al último mensaje (tanto al recibir como al enviar).
+  useEffect(() => {
+    const el = teamChatMessagesRef.current;
+    if (!el) return;
+
+    const id = globalThis.setTimeout(() => {
+      try {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } catch (e) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }, 50);
+
+    return () => globalThis.clearTimeout(id);
+  }, [messages]);
   
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
@@ -160,9 +183,6 @@ function WarRoom({ params }) {
     description: '',
     icon: '🔄'
   });
-  
-  // Ref para auto-scroll del chat
-  const chatMessagesEndRef = useRef(null);
 
   const incidentId = useMemo(() => {
     if (warRoom?.incidentId) return warRoom.incidentId;
@@ -347,12 +367,6 @@ function WarRoom({ params }) {
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
-    
-    // Helper function to check if the payload warRoomId matches current warRoomId
-    const isWarRoomMatch = (payloadWarRoomId) => {
-      return payloadWarRoomId && payloadWarRoomId.toString() === warRoomId.toString();
-    };
-    
     const handleWebSocketEvent = (eventType, payload) => {
       // Handle warroom participant updates
       if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
@@ -441,12 +455,7 @@ function WarRoom({ params }) {
     return () => globalThis.clearInterval(interval);
   }, [meetingId, loadWarRoomMessages]);
 
-  // Auto-scroll del chat cuando lleguen mensajes nuevos
-  useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
+
 
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
@@ -533,6 +542,15 @@ function WarRoom({ params }) {
     try {
       await sendWarRoomMessage(meetingId || warRoomId, message.trim());
       setMessage('');
+      // Forzar scroll al enviar (el propio remitente debe ver su mensaje)
+      const el = teamChatMessagesRef.current;
+      if (el) {
+        try {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
       // Give backend time to persist and broadcast, then reload
       setTimeout(() => {
         if (meetingId) loadWarRoomMessages(meetingId);
@@ -542,12 +560,6 @@ function WarRoom({ params }) {
     }
   };
 
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      handleSubmit(event);
-    }
-  };
 
 
   const handleMarkContained = async () => {
@@ -671,11 +683,6 @@ function WarRoom({ params }) {
       );
     }
 
-    // Extraer top 5 probabilidades más altas
-    const topProbabilities = Object.entries(mlMetrics.probabilities || {})
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5);
-
     const allProbabilities = Object.entries(mlMetrics.probabilities || {})
       .sort(([, a], [, b]) => b - a);
 
@@ -722,26 +729,7 @@ function WarRoom({ params }) {
             </div>
           </div>
           
-          {/* Top 5 probabilidades */}
-          {topProbabilities.length > 0 && (
-            <details open>
-              <summary>Top 5 Probabilidades</summary>
-              <div className="probabilities-list">
-                {topProbabilities.map(([type, prob]) => (
-                  <div key={type} className="probability-item">
-                    <span className="prob-label">{type}</span>
-                    <div className="prob-bar-container">
-                      <div 
-                        className="prob-bar" 
-                        style={{ width: `${prob * 100}%` }}
-                      />
-                    </div>
-                    <span className="prob-value">{(prob * 100).toFixed(2)}%</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
+          {/* Top 5 list removed from the ML metrics panel - the graphical Top5 stays in the right column */}
           
           {/* Protocolo estándar */}
           {mlMetrics.standard_protocol && (
@@ -753,20 +741,7 @@ function WarRoom({ params }) {
             </details>
           )}
           
-          {/* Todas las probabilidades */}
-          {allProbabilities.length > 0 && (
-            <details>
-              <summary>Todas las Probabilidades ({allProbabilities.length})</summary>
-              <div className="all-probabilities">
-                {allProbabilities.map(([type, prob]) => (
-                  <div key={type} className="prob-row">
-                    <span className="prob-type">{type}</span>
-                    <span className="prob-percent">{(prob * 100).toFixed(4)}%</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
+          {/* Todas las probabilidades - eliminado: ahora se visualiza en el panel derecho (AllProbabilitiesChart) */}
         </div>
       </section>
     );
@@ -837,64 +812,111 @@ function WarRoom({ params }) {
         </div>
       </header>
 
-      <div className="war-room-layout">
-        {mlMetricsPanel}
 
-        <aside className="panel ai-private-panel">
-          <AIPrivateChat
-            warRoomId={warRoomId}
-            privateMessages={warRoom?.privateMessages}
-            loading={loading.warRoom}
-            onSendMessage={sendAIPrivateMessage}
-            onLoadMessages={loadAIPrivateMessages}
-            isAdmin={isAdmin(auth?.user)}
-          />
-        </aside>
 
-        <section className="panel chat-panel" aria-labelledby="chat-heading">
-          <header>
-            <h3 id="chat-heading">💬 Chat del equipo</h3>
-            <span>Conversación grupal - Actualiza cada 10 segundos</span>
-          </header>
-          <div className="chat-messages" aria-live="polite" style={{ height: '400px', overflowY: 'auto' }}>
-            {messages.filter(item => item && item.id).map((item) => (
-              <article key={item.id} className={`chat-message chat-${item.role}`}>
-                <header>
-                  <span>{getMessageSenderLabel(item)}</span>
-                  <time dateTime={item.createdAt}>{formatTimestamp(item.createdAt)}</time>
-                </header>
-                <p>{item.content}</p>
-              </article>
-            ))}
-            <div ref={chatMessagesEndRef} />
+
+      <div className="war-room-layout war-room-3col">
+        {/* Columna 1: IA + Top5 */}
+        <div className="war-room-col war-room-col-1">
+          <aside className="panel ai-private-panel">
+            <AIPrivateChat
+              warRoomId={warRoomId}
+              privateMessages={warRoom?.privateMessages}
+              loading={loading.warRoom}
+              onSendMessage={sendAIPrivateMessage}
+              onLoadMessages={loadAIPrivateMessages}
+              isAdmin={isAdmin(auth?.user)}
+            />
+          </aside>
+          <section className="panel top5-left-panel">
+            <header>
+              <h3>Top 5 Probabilidades</h3>
+            </header>
+            <div style={{ padding: '1rem' }}>
+              <Top5Probabilities probabilities={mlMetrics?.probabilities} showHeader={false} />
+            </div>
+          </section>
+        </div>
+
+        {/* Columna 2: Métricas ML + Botón para mostrar resultados */}
+        <div className="war-room-col war-room-col-2">
+          {mlMetricsPanel}
+          <div className="panel all-prob-panel" style={{ marginTop: '1.2rem' }}>
+            <header>
+              <h3>Todas las probabilidades</h3>
+            </header>
+            <button className="btn primary" style={{ width: '100%', marginTop: '0.5rem' }} onClick={() => setShowProbModal(true)}>
+              Mostrar resultados
+            </button>
           </div>
-          <form className="chat-form" onSubmit={handleSubmit}>
-            <label htmlFor="chat-input" className="sr-only">
-              Escribe un mensaje
-            </label>
-            <textarea
-              id="chat-input"
-              name="chat-input"
-              rows={3}
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
-              required
+        </div>
+
+        {/* Columna 3: Chat equipo */}
+        <div className="war-room-col war-room-col-3">
+          <section className="panel chat-panel" aria-labelledby="chat-heading">
+            <header>
+              <h3 id="chat-heading">💬 Chat del equipo</h3>
+              <span>Conversación grupal - Actualiza cada 10 segundos</span>
+            </header>
+            <div ref={teamChatMessagesRef} className="chat-messages" aria-live="polite">
+              {messages.filter(item => item && item.id).map((item) => (
+                <article key={item.id} className={`chat-message chat-${item.role}`}>
+                  <header>
+                    <span>{getMessageSenderLabel(item)}</span>
+                    <time dateTime={item.createdAt}>{formatTimestamp(item.createdAt)}</time>
+                  </header>
+                  <p>{item.content}</p>
+                </article>
+              ))}
+            </div>
+            <form className="chat-form" onSubmit={handleSubmit}>
+              <label htmlFor="chat-input" className="sr-only">
+                Escribe un mensaje
+              </label>
+              <textarea
+                id="chat-input"
+                name="chat-input"
+                rows={3}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Habla con tu equipo (visible para todos)."
+                required
                 style={{
                   minHeight: '56px',
                   maxHeight: '120px',
                   resize: 'vertical',
                 }}
-            />
-            <div className="chat-actions">
-              <button type="submit" className="btn primary">
-                Enviar
-              </button>
+              />
+              <div className="chat-actions">
+                <button type="submit" className="btn primary">
+                  Enviar
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        {/* Modal para mostrar la gráfica completa */}
+        {/* Modal para mostrar la gráfica completa */}
+        {showProbModal && (
+          <div className="modal-backdrop" onClick={() => setShowProbModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <h3>Resultados de Probabilidades</h3>
+              </header>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                <AllProbabilitiesChart probabilities={mlMetrics?.probabilities} />
+              </div>
+              <div className="modal-actions">
+                <button className="btn" onClick={() => setShowProbModal(false)}>Cerrar</button>
+              </div>
             </div>
-          </form>
-        </section>
+          </div>
+        )}
       </div>
+
+
+
 
       <ConfirmDialog
         open={confirmContain}

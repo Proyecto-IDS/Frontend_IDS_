@@ -1,3 +1,108 @@
+/* Estilos para AllProbabilitiesChart - diagrama de barras y heatmap */
+.all-probabilities-chart {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.ap-heatmap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1.2rem;
+  margin-top: 1.2rem;
+}
+.ap-cell {
+  background: linear-gradient(90deg, #e0e7ff 0%, #f0fdfa 100%);
+  border-radius: 0.8rem;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+  padding: 0.7rem 0.6rem;
+  margin: 0.2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.ap-cell-inner {
+  width: 100%;
+    margin-top: 0;
+  flex-direction: column;
+  align-items: center;
+}
+.ap-cell-label {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #2d3748;
+  margin-bottom: 0.3rem;
+}
+.ap-cell-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.ap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.ap-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.2rem;
+}
+.ap-label {
+  min-width: 90px;
+  font-size: 1rem;
+  color: #374151;
+  font-weight: 500;
+}
+.ap-bar-wrap {
+  flex: 1;
+  height: 18px;
+  background: #e0e7ff;
+  border-radius: 9px;
+  overflow: hidden;
+  margin-right: 0.5rem;
+}
+.ap-bar {
+  height: 100%;
+  border-radius: 9px;
+  background: linear-gradient(90deg, #2563eb 0%, #10b981 100%);
+  transition: width 0.4s cubic-bezier(.4,0,.2,1);
+}
+.ap-value {
+  min-width: 60px;
+  text-align: right;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.ai-private-panel {
+  max-height: 420px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.chat-panel,
+.ml-metrics-panel {
+  max-height: 420px;
+  min-height: 320px;
+  overflow-y: auto;
+  flex: 0 0 auto;
+}
+
+.war-room-col-1 .top5-left-panel,
+.war-room-col-2 .all-prob-panel,
+.war-room-col-3 .all-prob-panel {
+  max-height: 260px;
+  min-height: 180px;
+  overflow-y: auto;
+  flex: 0 0 auto;
+}
 .sidebar {
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
@@ -528,13 +633,18 @@
   padding: var(--space-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-  max-width: 420px;
-  width: min(420px, 90vw);
+  max-width: 480px;
+  width: min(480px, 95vw);
+  max-height: 80vh;
+  overflow-y: auto;
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .modal-actions {
@@ -641,15 +751,29 @@
   padding: var(--space-lg);
 }
 
+
+
+
+
 .chat-panel {
   flex: 2;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 320px;
 }
+
+
+
+
+
 
 .chat-messages {
   display: flex;
   flex-direction: column;
   gap: var(--space);
-  max-height: 420px;
+  flex-grow: 1;
+  min-height: 80px;
   overflow-y: auto;
   padding-right: var(--space);
 }
@@ -678,11 +802,18 @@
   border-left: 3px solid var(--success);
 }
 
+
+
+
+
 .chat-form {
   display: flex;
   flex-direction: column;
   gap: var(--space);
+  margin-top: auto;
 }
+
+
 
 .chat-form textarea {
   border-radius: var(--radius);
@@ -690,12 +821,21 @@
   background: var(--bg-elev);
   padding: var(--space);
   resize: vertical;
-  min-height: 120px;
+  min-height: 36px;
+  max-height: 64px;
+  font-size: 1rem;
 }
+
 
 .chat-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 4px;
+}
+.chat-form button {
+  min-width: 100px;
+  height: 38px;
+  font-size: 1rem;
 }
 
 .checklist-panel {
@@ -949,52 +1089,115 @@
 }
 
 /* War Room Layout - Grid structure (Métricas izquierda, Chat IA derecha) */
-.war-room-layout {
+
+/* Nuevo layout de 3 columnas para WarRoom */
+.war-room-layout.war-room-3col {
   display: grid;
-  grid-template-columns: 1fr 350px;
-  grid-template-rows: 1fr auto;
-  gap: 1rem;
-  height: calc(100vh - 260px);
-  min-height: 500px;
+  grid-template-columns: 1fr 1.2fr 1.2fr;
+  gap: 1.5rem;
+  align-items: start;
+    min-height: 0;
+    height: 100%;
 }
 
-.war-room-layout .ml-metrics-panel {
-  grid-column: 1;
-  grid-row: 1;
+.war-room-col {
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  gap: 1.2rem;
+  height: 100%;
 }
 
-.war-room-layout .ai-private-panel {
-  grid-column: 2;
-  grid-row: 1;
+.war-room-col-1 {
+  min-width: 280px;
+  max-width: 400px;
+}
+.war-room-col-2 {
+  min-width: 320px;
+}
+.war-room-col-3 {
+  min-width: 320px;
+}
+
+.all-prob-panel {
+  min-height: 180px;
+  max-height: 260px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  justify-content: flex-start;
+  align-items: stretch;
+  box-sizing: border-box;
 }
 
-.war-room-layout .chat-panel {
-  grid-column: 1 / -1;
+/* Panel de todas las probabilidades combinado (ocupa columnas 2 y 3) */
+.all-prob-panel-wide {
+  grid-column: 2 / span 2;
   grid-row: 2;
-  max-height: 160px;
+  width: 100%;
+  min-height: 320px;
+  max-height: 420px;
+  background: var(--panel-bg, #fff);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  border-radius: 1.2rem;
+  padding: 1.5rem 2rem 1.5rem 2rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Eliminar fondo blanco extra debajo del panel grande */
+.all-prob-panel-wide:after {
+  content: none;
+}
+}
+
+@media (max-width: 1200px) {
+  .war-room-layout.war-room-3col {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .war-room-layout.war-room-3col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+    min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .all-prob-panel {
+    margin-top: 0;
+  }
+}
+
+
+/* Unificado: chat-panel, chat-messages y chat-form para WarRoom */
+.chat-panel {
+  flex: 2;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 320px;
 }
-
-/* Lista de mensajes: crece y hace scroll */
 .chat-messages {
-  flex: 1 1 auto;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+  flex-grow: 1;
+  min-height: 80px;
+  max-height: 320px;
   overflow-y: auto;
-  margin-bottom: 4px;
-  max-height: 70px;
+  padding-right: var(--space);
 }
-
-/* Formulario: sin margin-top:auto para que no se separe demasiado */
 .chat-form {
-  margin-top: 0;
-  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+  margin-top: auto;
 }
 
 /* ML Metrics Panel Styles */
@@ -1116,16 +1319,24 @@
 }
 
 .all-probabilities {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
   padding: 1rem 0;
-  max-height: 300px;
+  max-height: 60vh;
   overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-width: 340px;
 }
 
 .prob-row {
-  display: flex;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
   justify-content: space-between;
   padding: 0.5rem;
   background: var(--bg-secondary, #f8fafc);
