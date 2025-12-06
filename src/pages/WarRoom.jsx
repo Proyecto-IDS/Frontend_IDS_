@@ -110,6 +110,7 @@ function WarRoom({ params }) {
     sendAIPrivateMessage,
     updateWarRoomMetrics,
     addToast,
+    forceReloadIncident,
   } = useAppActions();
   // ==== Resolver etiqueta de remitente usando también el usuario logueado ====
   const getMessageSenderLabel = (message) => {
@@ -598,7 +599,14 @@ function WarRoom({ params }) {
       
       setConfirmContain(false);
       
+      // Recargar el incidente actualizado antes de navegar
       if (incidentId && incidentId !== warRoomId) {
+        try {
+          // Forzar recarga del incidente desde el backend (invalida caché)
+          await forceReloadIncident(incidentId);
+        } catch (reloadError) {
+          console.warn('Failed to reload incident after marking as contained:', reloadError);
+        }
         navigate(getRouteHash('incident-detail', { id: incidentId }));
       } else {
         navigate(getRouteHash('dashboard'));
@@ -863,7 +871,13 @@ function WarRoom({ params }) {
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Habla con tu equipo (visible para todos)."
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSubmit(event);
+                }
+              }}
+              placeholder="Habla con tu equipo (visible para todos). Presiona Enter para enviar, Shift+Enter para nueva línea."
               required
               style={{
                 minHeight: '56px',
