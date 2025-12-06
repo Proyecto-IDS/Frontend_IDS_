@@ -896,6 +896,25 @@ export function AppProvider({ children }) {
       }
     };
 
+    const forceReloadIncident = async (id) => {
+      dispatch({ type: 'incident/loading', payload: true });
+      try {
+        // Invalidar caché primero
+        cacheRef.current.incidentDetails.delete(id);
+        
+        // Recargar desde backend
+        const incident = await getIncidentById(id, state.settings.apiBaseUrl);
+        cacheRef.current.incidentDetails.set(id, incident);
+        dispatch({ type: 'incident/loaded', payload: incident });
+        return incident;
+      } catch (error) {
+        console.warn('[state] Failed to force reload incident:', error?.message);
+        return await tryFallbackIncident(id);
+      } finally {
+        dispatch({ type: 'incident/loading', payload: false });
+      }
+    };
+
     const updateIncidentStatus = async (id, actionKey) => {
       try {
         let incident = null;
@@ -1240,8 +1259,15 @@ export function AppProvider({ children }) {
       try {
         const messages = await getWarRoomMessages(warRoomId, state.settings.apiBaseUrl);
         dispatch({ type: 'warroom/messages', payload: { id: warRoomId, messages } });
+        
+        // Preserve existing warRoom data including mlMetrics when updating cache
+        const existingState = state.warRooms[warRoomId] || {};
         const cached = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
-        cacheRef.current.warRooms.set(warRoomId, { ...cached, messages });
+        cacheRef.current.warRooms.set(warRoomId, { 
+          ...cached, 
+          ...existingState,
+          messages 
+        });
         return messages;
       } catch (error) {
         addToast({
@@ -1287,6 +1313,53 @@ export function AppProvider({ children }) {
           ...fullDetails,
           checklist
         };
+        
+        // Obtener alertId y cargar métricas ML
+        let alertId = warRoom.alertId;
+        
+        if (!alertId) {
+          console.log('[state joinWarRoom] Trying to get alertId. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
+          
+          // Método 1: Buscar usando el meetingId
+          try {
+            alertId = await getAlertIdFromIncidentId(warRoom.id, state.settings.apiBaseUrl);
+            if (alertId) {
+              warRoom.alertId = alertId;
+              console.log('[state joinWarRoom] ✓ Obtained alertId using meetingId:', alertId);
+            }
+          } catch (directError) {
+            console.warn('[state joinWarRoom] Search by meetingId failed:', directError?.message);
+          }
+          
+          // Método 2: Buscar usando el incidentId
+          if (!alertId && warRoom.incidentId) {
+            try {
+              alertId = await getAlertIdFromIncidentId(warRoom.incidentId, state.settings.apiBaseUrl);
+              if (alertId) {
+                warRoom.alertId = alertId;
+                console.log('[state joinWarRoom] ✓ Obtained alertId using incidentId:', alertId);
+              }
+            } catch (incidentError) {
+              console.warn('[state joinWarRoom] Search by incidentId failed:', incidentError?.message);
+            }
+          }
+        }
+        
+        // Cargar métricas ML si hay alertId
+        if (alertId && state.settings.apiBaseUrl) {
+          try {
+            const mlMetrics = await getAlertMLMetrics(state.settings.apiBaseUrl, alertId);
+            if (mlMetrics) {
+              warRoom.mlMetrics = mlMetrics;
+              console.log('[state joinWarRoom] ✓ Loaded ML metrics for warRoom:', warRoom.id, 'alertId:', alertId);
+            }
+          } catch (metricsError) {
+            console.warn('[state joinWarRoom] Failed to load ML metrics:', metricsError?.message);
+          }
+        } else {
+          console.warn('[state joinWarRoom] ✗ No alertId available. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
+        }
+        
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
@@ -1718,6 +1791,7 @@ export function AppProvider({ children }) {
       dismissToast,
       loadIncidents,
       loadIncidentById,
+      forceReloadIncident,
       clearSelectedIncident,
       updateIncidentStatus,
       openWarRoom,

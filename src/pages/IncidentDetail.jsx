@@ -4,7 +4,6 @@ import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
 import Tag from '../components/Tag.jsx';
 import Pill from '../components/Pill.jsx';
-import Stepper from '../components/Stepper.jsx';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Modal from '../components/Modal.jsx';
@@ -58,6 +57,137 @@ const getParticipantCount = (warRoomState, isResolved) => {
 };
 
 // Helper: Render action buttons based on incident status
+// Función para generar y descargar el PDF del informe
+const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
+  // Crear el contenido HTML para el PDF
+  const content = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+        h1 { color: #1e40af; border-bottom: 3px solid #1e40af; padding-bottom: 10px; }
+        h2 { color: #2563eb; margin-top: 30px; border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+        h3 { color: #3b82f6; margin-top: 20px; }
+        .header-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+        .info-group { background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6; }
+        .info-label { font-weight: bold; color: #64748b; font-size: 12px; text-transform: uppercase; }
+        .info-value { font-size: 16px; margin-top: 5px; }
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+        .metric-card { background: #f1f5f9; padding: 15px; border-radius: 8px; }
+        .metric-label { font-size: 12px; color: #64748b; font-weight: 600; }
+        .metric-value { font-size: 20px; font-weight: bold; color: #1e293b; margin-top: 5px; }
+        .tag { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-right: 8px; }
+        .tag-success { background: #dcfce7; color: #166534; }
+        .tag-warn { background: #fef3c7; color: #854d0e; }
+        .tag-danger { background: #fee2e2; color: #991b1b; }
+        .tag-info { background: #dbeafe; color: #1e40af; }
+        .checklist { list-style: none; padding: 0; }
+        .checklist li { padding: 8px 0; padding-left: 30px; position: relative; }
+        .checklist li:before { content: "✓"; position: absolute; left: 0; color: #10b981; font-weight: bold; font-size: 18px; }
+        .analysis-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 15px 0; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; color: #64748b; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <h1>📋 Informe de Incidente: ${incident.id}</h1>
+      
+      <div class="header-info">
+        <div class="info-group">
+          <div class="info-label">Tipo de Incidente</div>
+          <div class="info-value">${incident.type || '—'}</div>
+        </div>
+        <div class="info-group">
+          <div class="info-label">Origen</div>
+          <div class="info-value">${incident.source || '—'}</div>
+        </div>
+        <div class="info-group">
+          <div class="info-label">Estado</div>
+          <div class="info-value">
+            <span class="tag tag-${incident.status === 'contenido' ? 'success' : 'warn'}">${incident.status}</span>
+          </div>
+        </div>
+        <div class="info-group">
+          <div class="info-label">Severidad</div>
+          <div class="info-value">
+            <span class="tag tag-${incident.severity === 'critica' ? 'danger' : incident.severity === 'alta' ? 'warn' : 'info'}">${incident.severity}</span>
+          </div>
+        </div>
+      </div>
+
+      ${incident.warRoomCode ? `
+        <h2>👥 Información de la War Room</h2>
+        <div class="info-group">
+          <div class="info-label">Código</div>
+          <div class="info-value">${incident.warRoomCode}</div>
+        </div>
+        <div class="info-group" style="margin-top: 10px;">
+          <div class="info-label">Inicio</div>
+          <div class="info-value">${incident.warRoomStartTime ? new Date(incident.warRoomStartTime).toLocaleString() : '—'}</div>
+        </div>
+        ${incident.status === 'contenido' && computeEndTime ? `
+          <div class="info-group" style="margin-top: 10px;">
+            <div class="info-label">Fin</div>
+            <div class="info-value">${computeEndTime.toLocaleString()}</div>
+          </div>
+        ` : ''}
+      ` : ''}
+
+      <h2>🤖 Análisis IA</h2>
+      <div class="analysis-box">
+        ${incident.aiSummary || 'El backend proporcionará un resumen con hallazgos de la IA.'}
+      </div>
+
+      <h3>Detalles ML</h3>
+      <p><strong>Probabilidad:</strong> ${typeof incident.attackProbability === 'number' ? `${(incident.attackProbability * 100).toFixed(2)}%` : '—'}</p>
+      <p><strong>Categoría:</strong> ${mlInfo.nombre} (${incident.category || '—'})</p>
+
+      ${incident.standardProtocol ? `
+        <h3>Protocolo estándar sugerido</h3>
+        <pre style="background: #f1f5f9; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-size: 12px;">${incident.standardProtocol}</pre>
+      ` : ''}
+
+      <h2>🛡️ Protocolo de Respuesta</h2>
+      <h3>${mlInfo.nombre}</h3>
+      <p>${mlInfo.descripcion}</p>
+      <h4>Checklist de acciones sugeridas:</h4>
+      <ul class="checklist">
+        ${mlInfo.checklist.map(item => `<li>${item}</li>`).join('')}
+      </ul>
+
+      <div class="footer">
+        <p>Informe generado el ${new Date().toLocaleString()} - Sistema de Detección de Intrusos</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Crear un iframe oculto para imprimir
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentWindow.document;
+  iframeDoc.open();
+  iframeDoc.write(content);
+  iframeDoc.close();
+
+  // Esperar a que se cargue el contenido y luego imprimir/guardar como PDF
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    
+    // Remover el iframe después de un tiempo
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
+  }, 500);
+};
+
 const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) => {
   if (incident.status === 'contenido') {
     return null;
@@ -236,6 +366,9 @@ function IncidentDetail({ params }) {
           <button type="button" className="btn subtle" onClick={() => navigate(getRouteHash('dashboard'))}>
             Volver
           </button>
+          <button type="button" className="btn primary" onClick={() => handleDownloadPDF(incident, mlInfo, warRoomState, computeEndTime)}>
+            📄 Descargar PDF
+          </button>
           {renderActionButtons(incident, setSolutionOpen, setConfirm, addToast)}
         </div>
       </header>
@@ -293,12 +426,6 @@ function IncidentDetail({ params }) {
                 <span className="meeting-info-value">{incident.warRoomCode || '—'}</span>
               </div>
               <div className="meeting-info-item">
-                <span className="meeting-info-label">Participantes{incident.status === 'contenido' ? '' : ' actuales'}</span>
-                <span className="meeting-info-value">
-                  {getParticipantCount(warRoomState, incident.status === 'contenido')}
-                </span>
-              </div>
-              <div className="meeting-info-item">
                 <span className="meeting-info-label">Inicio</span>
                 <span className="meeting-info-value">
                   {incident.warRoomStartTime ? (
@@ -318,13 +445,6 @@ function IncidentDetail({ params }) {
           </fieldset>
         </section>
       )}
-
-      <section className="panel">
-        <header>
-          <h3>Línea de tiempo</h3>
-        </header>
-        <Stepper steps={incident.timeline || []} />
-      </section>
 
       <section className="panel">
         <header>
