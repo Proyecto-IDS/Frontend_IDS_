@@ -58,7 +58,7 @@ function Settings() {
         <fieldset>
           <legend>Backend</legend>
           <label>
-            URL base de la API
+            URL base de la API{' '}
             <input
               type="url"
               value={form.apiBaseUrl}
@@ -102,7 +102,7 @@ function Settings() {
         <fieldset>
           <legend>Tema</legend>
           <label>
-            Modo de color
+            Modo de color{' '}
             <select value={form.theme} onChange={(event) => handleChange('theme', event.target.value)}>
               {themeOptions.map((option) => (
                 <option key={option.value} value={option.value}>

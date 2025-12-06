@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const Stepper = memo(function Stepper({ steps = [], currentIndex = steps.length - 1 }) {
   return (
@@ -14,5 +15,15 @@ const Stepper = memo(function Stepper({ steps = [], currentIndex = steps.length 
     </ol>
   );
 });
+
+Stepper.propTypes = {
+  steps: PropTypes.arrayOf(
+    PropTypes.shape({
+      label: PropTypes.string.isRequired,
+      timestamp: PropTypes.string,
+    })
+  ),
+  currentIndex: PropTypes.number,
+};
 
 export default Stepper;

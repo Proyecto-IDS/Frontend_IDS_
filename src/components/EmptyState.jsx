@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const EmptyState = memo(function EmptyState({ title, description, action }) {
   return (
@@ -11,3 +12,9 @@ const EmptyState = memo(function EmptyState({ title, description, action }) {
 });
 
 export default EmptyState;
+
+EmptyState.propTypes = {
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  action: PropTypes.node,
+};

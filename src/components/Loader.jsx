@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const Loader = memo(function Loader({ label = 'Cargando' }) {
   return (
@@ -10,3 +11,7 @@ const Loader = memo(function Loader({ label = 'Cargando' }) {
 });
 
 export default Loader;
+
+Loader.propTypes = {
+  label: PropTypes.string,
+};
