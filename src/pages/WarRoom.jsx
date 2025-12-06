@@ -9,6 +9,11 @@ import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 import AIPrivateChat from '../components/AIPrivateChat.jsx';
 import Tag from '../components/Tag.jsx';
+import Top5Probabilities from '../components/Top5Probabilities.jsx';
+import AllProbabilitiesChart from '../components/AllProbabilitiesChart.jsx';
+import MetricsGauge from '../components/MetricsGauge.jsx';
+import ThreatLevelIndicator from '../components/ThreatLevelIndicator.jsx';
+import ProbabilityDistribution from '../components/ProbabilityDistribution.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -88,7 +93,11 @@ const isSameChatMessage = (a, b) => {
 const POLL_INTERVAL = Number(import.meta?.env?.VITE_WARROOM_POLL_INTERVAL || 10000);
 
 function WarRoom({ params }) {
+    // Ref para el contenedor de mensajes del chat de equipo
+    const teamChatMessagesRef = useRef(null);
   const warRoomId = params.id;
+  // Estado para mostrar el modal de probabilidades
+  const [showProbModal, setShowProbModal] = useState(false);
   const state = useAppState();
   const { warRooms, loading, auth, settings } = state;
   const {
@@ -99,6 +108,7 @@ function WarRoom({ params }) {
     leaveWarRoom,
     loadAIPrivateMessages,
     sendAIPrivateMessage,
+    updateWarRoomMetrics,
     addToast,
   } = useAppActions();
   // ==== Resolver etiqueta de remitente usando también el usuario logueado ====
@@ -141,14 +151,26 @@ function WarRoom({ params }) {
   const warRoom = warRooms[warRoomId];
   const meetingId = warRoom?.id;
   const messages = Array.isArray(warRoom?.messages) ? warRoom.messages : [];
+
+  // Scroll automático al fondo cuando llegan nuevos mensajes al chat de equipo.
+  // FORZAR: siempre desplazar al último mensaje (tanto al recibir como al enviar).
+  useEffect(() => {
+    const el = teamChatMessagesRef.current;
+    if (!el) return;
+
+    const id = globalThis.setTimeout(() => {
+      try {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } catch (e) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }, 50);
+
+    return () => globalThis.clearTimeout(id);
+  }, [messages]);
   
   const [message, setMessage] = useState('');
   const [confirmContain, setConfirmContain] = useState(false);
-  
-  // Estado para métricas ML
-  const [mlMetrics, setMlMetrics] = useState(null);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
-  const [metricsLoaded, setMetricsLoaded] = useState(false);
   
   // Estado para el cronómetro en tiempo real
   const [currentDuration, setCurrentDuration] = useState(0);
@@ -160,9 +182,6 @@ function WarRoom({ params }) {
     description: '',
     icon: '🔄'
   });
-  
-  // Ref para auto-scroll del chat
-  const chatMessagesEndRef = useRef(null);
 
   const incidentId = useMemo(() => {
     if (warRoom?.incidentId) return warRoom.incidentId;
@@ -170,62 +189,22 @@ function WarRoom({ params }) {
     return warRoomId;
   }, [warRoom, warRoomId]);
 
-  // Función para cargar métricas ML
-  const loadMLMetrics = async (alertId) => {
-    if (!alertId || !settings.apiBaseUrl) return;
-    
-    setLoadingMetrics(true);
-    try {
-      const data = await getAlertMLMetrics(settings.apiBaseUrl, alertId);
-      setMlMetrics(data);
-      setMetricsLoaded(true);
-    } catch (error) {
-      console.error('Error loading ML metrics:', error);
-      setMlMetrics(null);
-      setMetricsLoaded(true);
-    } finally {
-      setLoadingMetrics(false);
-    }
-  };
+  // Usar métricas ML del estado global (ya cargadas en state.js)
+  const mlMetrics = warRoom?.mlMetrics || null;
+  const loadingMetrics = false; // Ya no necesitamos estado de loading local
 
-  // Cargar métricas cuando tengamos el alertId (solo una vez)
+  // Log para debugging - ver estado de métricas
   useEffect(() => {
-    if (metricsLoaded) return; // Si ya se cargaron, no volver a cargar
-    
-    // Intentar obtener el alertId desde diferentes fuentes
-    let alertId = null;
-    
-    // 1. Verificar si warRoom tiene alertId directamente
-    if (warRoom?.alertId) {
-      alertId = warRoom.alertId;
+    if (warRoom) {
+      console.log('[WarRoom] Estado actual:', {
+        warRoomId: warRoom.id,
+        hasAlertId: !!warRoom.alertId,
+        alertId: warRoom.alertId,
+        hasMetrics: !!warRoom.mlMetrics,
+        metricsKeys: warRoom.mlMetrics ? Object.keys(warRoom.mlMetrics) : []
+      });
     }
-    // 2. Buscar el incidente en el state y obtener su _alertId
-    else if (incidentId) {
-      const incident = Object.values(state.incidents || {}).find(
-        inc => inc.id === incidentId || inc.id === warRoom?.incidentId
-      );
-      if (incident?._alertId) {
-        alertId = incident._alertId;
-      }
-    }
-    // 3. Si el incidentId tiene formato INC-XXX, intentar buscar por ese ID
-    else if (warRoom?.incidentId) {
-      const incident = Object.values(state.incidents || {}).find(
-        inc => inc.id === warRoom.incidentId
-      );
-      if (incident?._alertId) {
-        alertId = incident._alertId;
-      }
-    }
-    
-    if (alertId && settings.apiBaseUrl) {
-      console.log('[WarRoom] Cargando métricas ML para alertId:', alertId);
-      loadMLMetrics(alertId);
-    } else {
-      console.warn('[WarRoom] No se pudo determinar el alertId para cargar métricas ML');
-      setMetricsLoaded(true); // Marcar como cargado para evitar intentos infinitos
-    }
-  }, [warRoom?.alertId, warRoom?.incidentId, incidentId, state.incidents, settings.apiBaseUrl, metricsLoaded]);
+  }, [warRoom?.id, warRoom?.alertId, warRoom?.mlMetrics]);
 
   // Efecto para calcular la duración en tiempo real
   useEffect(() => {
@@ -347,12 +326,6 @@ function WarRoom({ params }) {
   // WebSocket connection for real-time participant updates and War Room events
   useEffect(() => {
     if (!auth?.token || !settings.apiBaseUrl || !warRoomId) return;
-    
-    // Helper function to check if the payload warRoomId matches current warRoomId
-    const isWarRoomMatch = (payloadWarRoomId) => {
-      return payloadWarRoomId && payloadWarRoomId.toString() === warRoomId.toString();
-    };
-    
     const handleWebSocketEvent = (eventType, payload) => {
       // Handle warroom participant updates
       if (eventType === 'warroom.participants' && isWarRoomMatch(payload.warRoomId)) {
@@ -367,6 +340,14 @@ function WarRoom({ params }) {
       // Handle new chat messages
       if (eventType === 'warroom.message' && isWarRoomMatch(payload.warRoomId)) {
         if (meetingId) loadWarRoomMessages(meetingId);
+      }
+
+      // Handle ML metrics updates - sincronizar métricas entre usuarios
+      if (eventType === 'warroom.metrics' && isWarRoomMatch(payload.warRoomId)) {
+        console.log('[WarRoom] Received ML metrics update from WebSocket:', payload.mlMetrics);
+        if (payload.mlMetrics && meetingId) {
+          updateWarRoomMetrics(meetingId, payload.mlMetrics);
+        }
       }
 
       // Handle warroom resolution events
@@ -392,7 +373,7 @@ function WarRoom({ params }) {
     return () => {
       socket.close();
     };
-  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, addToast]);
+  }, [auth?.token, settings.apiBaseUrl, warRoomId, incidentId, openWarRoom, addToast, meetingId, updateWarRoomMetrics]);
 
   // WebSocket connection for real-time chat messages
   useEffect(() => {
@@ -441,12 +422,7 @@ function WarRoom({ params }) {
     return () => globalThis.clearInterval(interval);
   }, [meetingId, loadWarRoomMessages]);
 
-  // Auto-scroll del chat cuando lleguen mensajes nuevos
-  useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
+
 
   // Deshabilitar navegación hacia atrás durante la reunión
   useEffect(() => {
@@ -509,6 +485,26 @@ function WarRoom({ params }) {
         event.preventDefault();
         return false;
       }
+
+      // Bloquear zoom con teclado (Ctrl/Cmd + +/-/0)
+      if ((event.ctrlKey || event.metaKey) && (event.key === '+' || event.key === '-' || event.key === '0' || event.key === '=' || event.key.toLowerCase() === 'ñ')) {
+        event.preventDefault();
+        return false;
+      }
+
+      // Bloquear búsqueda del navegador (Ctrl/Cmd + F)
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    const handleWheel = (event) => {
+      // Bloquear zoom con scroll (Ctrl/Cmd + scroll)
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        return false;
+      }
     };
 
     const handleBeforeUnload = (event) => {
@@ -518,13 +514,29 @@ function WarRoom({ params }) {
     };
 
     document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('wheel', handleWheel, { passive: false });
     globalThis.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('wheel', handleWheel);
       globalThis.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [settings.apiBaseUrl, auth?.token, auth?.user?.id]);
+
+  // Forzar zoom al 80% al entrar a la WarRoom
+  useEffect(() => {
+    // Guardar el zoom original
+    const originalZoom = document.body.style.zoom;
+    
+    // Aplicar zoom al 80%
+    document.body.style.zoom = '0.8';
+    
+    // Restaurar el zoom original al salir
+    return () => {
+      document.body.style.zoom = originalZoom;
+    };
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -533,6 +545,15 @@ function WarRoom({ params }) {
     try {
       await sendWarRoomMessage(meetingId || warRoomId, message.trim());
       setMessage('');
+      // Forzar scroll al enviar (el propio remitente debe ver su mensaje)
+      const el = teamChatMessagesRef.current;
+      if (el) {
+        try {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
       // Give backend time to persist and broadcast, then reload
       setTimeout(() => {
         if (meetingId) loadWarRoomMessages(meetingId);
@@ -542,12 +563,6 @@ function WarRoom({ params }) {
     }
   };
 
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      handleSubmit(event);
-    }
-  };
 
 
   const handleMarkContained = async () => {
@@ -671,104 +686,38 @@ function WarRoom({ params }) {
       );
     }
 
-    // Extraer top 5 probabilidades más altas
-    const topProbabilities = Object.entries(mlMetrics.probabilities || {})
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5);
-
-    const allProbabilities = Object.entries(mlMetrics.probabilities || {})
-      .sort(([, a], [, b]) => b - a);
-
     return (
-      <section className="panel ml-metrics-panel">
-        <header>
-          <h3>Métricas del Modelo ML</h3>
-          <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-            Análisis de probabilidades del modelo
-          </span>
-        </header>
-        
-        <div className="ml-metrics-content">
-          {/* Información principal */}
-          <div className="ml-summary">
-            <div className="ml-info-item">
-              <span className="ml-label">Predicción:</span>
-              <Tag tone={mlMetrics.prediction === 'normal' ? 'success' : 'danger'}>
-                {mlMetrics.prediction || '—'}
-              </Tag>
-            </div>
-            
-            <div className="ml-info-item">
-              <span className="ml-label">Estado:</span>
-              <Tag tone={getSeverityTone(mlMetrics.state)}>
-                {mlMetrics.state || '—'}
-              </Tag>
-            </div>
-            
-            {mlMetrics.category && (
-              <div className="ml-info-item">
-                <span className="ml-label">Categoría:</span>
-                <span className="ml-value">{mlMetrics.category}</span>
-              </div>
-            )}
-            
-            <div className="ml-info-item">
-              <span className="ml-label">Prob. de ataque:</span>
-              <span className="ml-value ml-probability">
-                {mlMetrics.attack_probability !== null && mlMetrics.attack_probability !== undefined
-                  ? `${(mlMetrics.attack_probability * 100).toFixed(2)}%`
-                  : '—'}
-              </span>
-            </div>
-          </div>
-          
-          {/* Top 5 probabilidades */}
-          {topProbabilities.length > 0 && (
-            <details open>
-              <summary>Top 5 Probabilidades</summary>
-              <div className="probabilities-list">
-                {topProbabilities.map(([type, prob]) => (
-                  <div key={type} className="probability-item">
-                    <span className="prob-label">{type}</span>
-                    <div className="prob-bar-container">
-                      <div 
-                        className="prob-bar" 
-                        style={{ width: `${prob * 100}%` }}
-                      />
-                    </div>
-                    <span className="prob-value">{(prob * 100).toFixed(2)}%</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-          
-          {/* Protocolo estándar */}
-          {mlMetrics.standard_protocol && (
-            <details>
-              <summary>Protocolo Estándar</summary>
-              <div className="protocol-content">
-                {mlMetrics.standard_protocol}
-              </div>
-            </details>
-          )}
-          
-          {/* Todas las probabilidades */}
-          {allProbabilities.length > 0 && (
-            <details>
-              <summary>Todas las Probabilidades ({allProbabilities.length})</summary>
-              <div className="all-probabilities">
-                {allProbabilities.map(([type, prob]) => (
-                  <div key={type} className="prob-row">
-                    <span className="prob-type">{type}</span>
-                    <span className="prob-percent">{(prob * 100).toFixed(4)}%</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
+      <>
+        {/* Panel 1: Indicador de nivel de amenaza */}
+        <div className="metric-card">
+          <ThreatLevelIndicator
+            prediction={mlMetrics.prediction}
+            attackProbability={mlMetrics.attack_probability || 0}
+            state={mlMetrics.state}
+          />
         </div>
-      </section>
+
+        {/* Panel 2: Gauge de probabilidad de ataque */}
+        <div className="metric-card">
+          <MetricsGauge
+            value={mlMetrics.attack_probability || 0}
+            label="Probabilidad de Ataque"
+            thresholds={{ low: 0.3, medium: 0.7 }}
+          />
+        </div>
+
+        {/* Panel 3: Protocolo de Respuesta */}
+        {mlMetrics.standard_protocol && (
+          <section className="panel metric-card">
+            <header>
+              <h3>📋 Protocolo de Respuesta</h3>
+            </header>
+            <div className="metric-content protocol-content">
+              {mlMetrics.standard_protocol}
+            </div>
+          </section>
+        )}
+      </>
     );
   }, [mlMetrics, loadingMetrics]);
 
@@ -798,37 +747,41 @@ function WarRoom({ params }) {
 
   return (
     <div className="page war-room-page">
-      <header className="page-header">
-        <div>
-          <h2>ID: {warRoom.id}</h2>
-          <p>Incidente {incidentId}</p>
-          <div className="war-room-info" style={{ fontSize: '0.9em', marginTop: '0.5em', opacity: 0.8 }}>
-            <span>Código: <strong>{warRoom.code}</strong></span>
+      <header className="page-header war-room-header">
+        <div className="war-room-header-content">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <h2 className="war-room-id">ID: <span className="id-number">{warRoom.id}</span></h2>
+              <p className="war-room-incident">Incidente <span className="incident-number">{incidentId}</span></p>
+            </div>
+            <div className="war-room-participants">
+              <span className="participants-label">Participantes:</span>
+              <strong className="participants-count">{warRoom.currentParticipantCount || warRoom.participantEmails?.length || 0}</strong>
+            </div>
+          </div>
+          
+          <div className="war-room-info">
+            <span className="info-item">Código: <strong className="info-value">{warRoom.code}</strong></span>
             {warRoom.startTime && (
-              <span style={{ marginLeft: '1em' }}>Inicio: <strong>{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
-            )}
-            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.durationSeconds && (
-              <span style={{ marginLeft: '1em' }}>Duración total: <strong>{formatDuration(warRoom.durationSeconds)}</strong></span>
-            )}
-            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.endTime && (
-              <span style={{ marginLeft: '1em' }}>Fin: <strong>{new Date(warRoom.endTime).toLocaleString()}</strong></span>
+              <span className="info-item">Inicio: <strong className="info-value">{new Date(warRoom.startTime).toLocaleDateString()}</strong></span>
             )}
             {warRoom.status && (
-              <span style={{ marginLeft: '1em' }}>Estado: <strong>{getStatusLabel(warRoom.status)}</strong></span>
+              <span className="info-item">Estado: <strong className="info-value status-badge">{getStatusLabel(warRoom.status)}</strong></span>
+            )}
+            {warRoom.startTime && (
+              <div className="war-room-timer">
+                <span className="timer-label">⏱️</span>
+                <strong className="timer-value">{formatDuration(currentDuration)}</strong>
+              </div>
+            )}
+            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.durationSeconds && (
+              <span className="info-item">Duración total: <strong className="info-value">{formatDuration(warRoom.durationSeconds)}</strong></span>
+            )}
+            {(warRoom.status === 'RESOLVED' || warRoom.status === 'ENDED') && warRoom.endTime && (
+              <span className="info-item">Fin: <strong className="info-value">{new Date(warRoom.endTime).toLocaleString()}</strong></span>
             )}
           </div>
           
-          {warRoom.startTime && (
-            <div className="war-room-timer" style={{ fontSize: '1.1em', marginTop: '0.8em', padding: '0.5em', backgroundColor: 'var(--color-success-100)', borderRadius: '4px', border: '1px solid var(--color-success-300)' }}>
-              <span style={{ color: 'var(--color-success-700)', fontWeight: '600' }}>⏱️ Duración: <strong style={{ fontFamily: 'monospace', fontSize: '1.2em' }}>{formatDuration(currentDuration)}</strong></span>
-            </div>
-          )}
-          
-          <div className="war-room-participants" style={{ fontSize: '0.85em', marginTop: '0.8em', opacity: 0.7 }}>
-            <span>Participantes: <strong>{warRoom.currentParticipantCount || warRoom.participantEmails?.length || 0}</strong></span>
-          </div>
-        </div>
-        <div className="actions-row">
           {isAdmin(auth?.user) && (
             <button type="button" className="btn success" onClick={() => setConfirmContain(true)}>
               Marcar como contenido
@@ -837,26 +790,59 @@ function WarRoom({ params }) {
         </div>
       </header>
 
-      <div className="war-room-layout">
-        {mlMetricsPanel}
 
-        <aside className="panel ai-private-panel">
-          <AIPrivateChat
-            warRoomId={warRoomId}
-            privateMessages={warRoom?.privateMessages}
-            loading={loading.warRoom}
-            onSendMessage={sendAIPrivateMessage}
-            onLoadMessages={loadAIPrivateMessages}
-            isAdmin={isAdmin(auth?.user)}
-          />
-        </aside>
 
+
+      <div className="war-room-layout war-room-executive">
+        {/* Columna izquierda: Chat IA + Chat Equipo */}
+        <div className="war-room-col war-room-col-left">
+          <aside className="panel ai-private-panel">
+            <AIPrivateChat
+              warRoomId={warRoomId}
+              privateMessages={warRoom?.privateMessages}
+              loading={loading.warRoom}
+              onSendMessage={sendAIPrivateMessage}
+              onLoadMessages={loadAIPrivateMessages}
+              isAdmin={isAdmin(auth?.user)}
+            />
+          </aside>
+        </div>
+
+        {/* Columna central: Métricas ML principales */}
+        <div className="war-room-col war-room-col-center">
+          {mlMetricsPanel}
+        </div>
+
+        {/* Columna derecha: Top 5 + Todas las probabilidades */}
+        <div className="war-room-col war-room-col-right">
+          <section className="panel top5-panel">
+            <header>
+              <h3>Top 5 Probabilidades</h3>
+            </header>
+            <div style={{ padding: '1rem' }}>
+              <Top5Probabilities probabilities={mlMetrics?.probabilities} showHeader={false} />
+            </div>
+          </section>
+          
+          <div className="panel all-prob-panel" style={{ marginTop: '1.2rem' }}>
+            <header>
+              <h3>Todas las probabilidades</h3>
+            </header>
+            <button className="btn primary" style={{ width: '100%', margin: '0.5rem 0' }} onClick={() => setShowProbModal(true)}>
+              Ver todas las amenazas
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Chat del equipo - Ancho completo debajo */}
+      <div className="war-room-team-chat-section">
         <section className="panel chat-panel" aria-labelledby="chat-heading">
           <header>
             <h3 id="chat-heading">💬 Chat del equipo</h3>
             <span>Conversación grupal - Actualiza cada 10 segundos</span>
           </header>
-          <div className="chat-messages" aria-live="polite" style={{ height: '400px', overflowY: 'auto' }}>
+          <div ref={teamChatMessagesRef} className="chat-messages" aria-live="polite">
             {messages.filter(item => item && item.id).map((item) => (
               <article key={item.id} className={`chat-message chat-${item.role}`}>
                 <header>
@@ -866,7 +852,6 @@ function WarRoom({ params }) {
                 <p>{item.content}</p>
               </article>
             ))}
-            <div ref={chatMessagesEndRef} />
           </div>
           <form className="chat-form" onSubmit={handleSubmit}>
             <label htmlFor="chat-input" className="sr-only">
@@ -878,14 +863,13 @@ function WarRoom({ params }) {
               rows={3}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Describe el siguiente paso o pregunta a la IA (visible para todos)."
+              placeholder="Habla con tu equipo (visible para todos)."
               required
-                style={{
-                  minHeight: '56px',
-                  maxHeight: '120px',
-                  resize: 'vertical',
-                }}
+              style={{
+                minHeight: '56px',
+                maxHeight: '120px',
+                resize: 'vertical',
+              }}
             />
             <div className="chat-actions">
               <button type="submit" className="btn primary">
@@ -895,6 +879,23 @@ function WarRoom({ params }) {
           </form>
         </section>
       </div>
+
+      {/* Modal para mostrar la gráfica completa */}
+      {showProbModal && (
+        <div className="modal-backdrop" onClick={() => setShowProbModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
+              <h3>Resultados de Probabilidades</h3>
+            </header>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+              <AllProbabilitiesChart probabilities={mlMetrics?.probabilities} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setShowProbModal(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmContain}

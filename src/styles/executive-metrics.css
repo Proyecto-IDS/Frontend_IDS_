@@ -1,0 +1,317 @@
+/* Executive Panel Styling */
+.executive-panel {
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.executive-panel header {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.executive-panel header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem 0;
+  color: var(--text);
+}
+
+.panel-subtitle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* ML Metrics Grid - Optimizado para columna central */
+.ml-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Metrics Gauge - Responsive al contenedor */
+.metrics-gauge {
+  background: transparent;
+  border-radius: 0;
+  padding: 1.5rem;
+  text-align: center;
+  border: none;
+}
+
+.gauge-header h4 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.gauge-svg {
+  width: 100%;
+  max-width: min(200px, 80%);
+  height: auto;
+  margin: 1rem auto;
+  display: block;
+}
+
+.gauge-label {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* Threat Level Indicator - Escalable */
+.threat-level-indicator {
+  background: transparent;
+  border-radius: 0;
+  padding: 1.5rem;
+  border: none;
+}
+
+.threat-header h4 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.threat-visual {
+  display: flex;
+  gap: clamp(1rem, 3vw, 2rem);
+  align-items: center;
+  justify-content: center;
+}
+
+.threat-bars {
+  display: flex;
+  gap: clamp(0.5rem, 1.5vw, 0.875rem);
+  align-items: flex-end;
+  height: clamp(80px, 10vh, 110px);
+  flex-shrink: 0;
+}
+
+.threat-bar {
+  width: 20px;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.3s ease;
+  opacity: 0.3;
+}
+
+.threat-bar.active {
+  opacity: 1;
+  box-shadow: 0 0 20px currentColor;
+}
+
+.threat-details {
+  flex: 1;
+}
+
+.threat-level-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  color: white;
+  font-weight: 600;
+  font-size: 1.125rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.threat-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.threat-metric {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: var(--surface);
+  border-radius: 4px;
+}
+
+.metric-label {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.metric-value {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Probability Distribution - Optimizado para altura */
+.probability-distribution {
+  background: transparent;
+  border-radius: 0;
+  padding: 1rem 1.25rem;
+  border: none;
+  height: 100%;
+}
+
+.probability-distribution h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.distribution-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.distribution-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.distribution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9375rem;
+}
+
+.threat-name {
+  font-weight: 500;
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+.threat-percentage {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.distribution-bar-container {
+  height: 12px;
+  background: var(--surface);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.distribution-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+/* ML Details Section */
+.ml-details-section {
+  padding: 0 1.5rem 1.5rem;
+}
+
+.ml-info-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.ml-info-card {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.ml-info-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ml-info-card.highlight {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.card-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.card-content {
+  flex: 1;
+}
+
+.card-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
+.card-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.card-value.probability {
+  color: var(--primary);
+  font-size: 1.5rem;
+}
+
+/* Protocol Details */
+.protocol-details {
+  margin: 1.5rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.protocol-details summary {
+  padding: 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  transition: background 0.2s ease;
+}
+
+.protocol-details summary:hover {
+  background: var(--border);
+}
+
+.protocol-content {
+  padding: 1rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ml-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .ml-info-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .threat-visual {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

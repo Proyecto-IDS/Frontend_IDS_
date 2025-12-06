@@ -39,14 +39,6 @@ const Topbar = memo(function Topbar({
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
       <div className="topbar-actions">
-        <button
-          type="button"
-          className="btn subtle"
-          onClick={onThemeCycle}
-          aria-label={`Cambiar tema (actual: ${themeLabels[theme] || theme})`}
-        >
-          {themeLabels[theme] || 'Tema'}
-        </button>
         {user && !hideUserActions ? (
           <div className="topbar-user">
             {user.picture ? (
