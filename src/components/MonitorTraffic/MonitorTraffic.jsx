@@ -6,6 +6,7 @@ import Modal from '../Modal.jsx';
 import Loader from '../Loader.jsx';
 import PacketRow from './PacketRow.jsx';
 import TrafficCanvas from './TrafficCanvas.jsx';
+import AlertsCharts from '../AlertsCharts.jsx';
 import './MonitorTraffic.css';
 
 const ROW_HEIGHT = 46;
@@ -111,48 +112,10 @@ function renderDetail(props) {
 function MonitorTraffic() {
   // Enable monitor only if the env var explicitly enables it
   const monitorEnabled = import.meta?.env?.VITE_MONITOR_ENABLED === 'true';
+  const { incidents } = useAppState();
 
   if (!monitorEnabled) {
-    return (
-      <section className="monitor-traffic placeholder" aria-label="Wireframe monitor de tráfico">
-        <header className="monitor-toolbar">
-          <div>
-            <h3>Monitor de tráfico (wireframe)</h3>
-            <p>Activa `VITE_MONITOR_ENABLED=true` y configura el backend para ver los paquetes en tiempo real.</p>
-          </div>
-        </header>
-        <div className="monitor-mock">
-          <div className="mock-list">
-            <div className="mock-row header">
-              <span>#</span>
-              <span>Hora</span>
-              <span>Origen</span>
-              <span>Destino</span>
-              <span>Proto</span>
-              <span>Len</span>
-              <span>Detección</span>
-              <span>Info</span>
-            </div>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="mock-row">
-                <span>{index + 1}</span>
-                <span>00:00:00.000</span>
-                <span>0.0.0.0:0000</span>
-                <span>0.0.0.0:0000</span>
-                <span>TCP</span>
-                <span>000</span>
-                <span>—</span>
-                <span>Descripción del paquete</span>
-              </div>
-            ))}
-          </div>
-          <aside className="mock-detail">
-            <h4>Detalle del paquete</h4>
-            <p>Una vez integrado el backend podrás ver el detalle, payload y acciones sobre el paquete seleccionado.</p>
-          </aside>
-        </div>
-      </section>
-    );
+    return <AlertsCharts incidents={incidents} />;
   }
 
   return <MonitorTrafficLive />;
