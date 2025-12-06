@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 
 function Modal({ open, title, description, children, actions, onClose }) {
   const dialogRef = useRef(null);
@@ -21,7 +22,13 @@ function Modal({ open, title, description, children, actions, onClose }) {
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={() => onClose?.()}>
+    <>
+      <button
+        type="button"
+        className="modal-backdrop"
+        aria-label="Cerrar"
+        onClick={() => onClose?.()}
+      />
       <div
         className="modal"
         role="dialog"
@@ -30,7 +37,6 @@ function Modal({ open, title, description, children, actions, onClose }) {
         aria-describedby={description ? 'modal-description' : undefined}
         tabIndex={-1}
         ref={dialogRef}
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="modal-header">
           <h2 id="modal-title">{title}</h2>
@@ -51,8 +57,17 @@ function Modal({ open, title, description, children, actions, onClose }) {
           ×
         </button>
       </div>
-    </div>
+    </>
   );
 }
 
 export default Modal;
+
+Modal.propTypes = {
+  open: PropTypes.bool.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  children: PropTypes.node,
+  actions: PropTypes.node,
+  onClose: PropTypes.func,
+};

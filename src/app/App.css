@@ -19,9 +19,22 @@
 }
 
 .war-room-layout {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 420px;
   gap: var(--space-lg);
   align-items: flex-start;
+}
+
+.chat-panel {
+  min-height: 500px;
+}
+
+.ai-private-panel {
+  min-height: 600px;
+}
+
+.ai-private-panel-large {
+  min-height: 700px;
 }
 
 .table-section {
@@ -195,8 +208,29 @@
   color: var(--muted);
 }
 
+@media (max-width: 1200px) {
+  .war-room-layout {
+    grid-template-columns: 1fr 350px;
+  }
+  
+  .ai-private-panel-large {
+    min-height: 650px;
+  }
+}
+
 @media (max-width: 960px) {
   .war-room-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    gap: var(--space);
+  }
+  
+  .chat-panel,
+  .ai-private-panel {
+    grid-column: 1;
+    min-height: 400px;
+  }
+  
+  .ai-private-panel-large {
+    min-height: 500px;
   }
 }

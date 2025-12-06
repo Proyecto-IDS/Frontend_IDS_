@@ -1,4 +1,5 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
+import PropTypes from 'prop-types';
 import {
   authStartGoogle as authStartGoogleApi,
   authFetchMe as authFetchMeApi,
@@ -14,6 +15,8 @@ import {
   joinMeeting,
   getWarRoomMessages,
   postWarRoomMessage as apiPostWarRoomMessage,
+  getAIPrivateMessages,
+  sendAIPrivateMessage,
   getTrafficRecent,
   getTrafficPacketById,
   connectAlertsWebSocket,
@@ -257,6 +260,17 @@ function reducer(state, action) {
         warRooms: {
           ...state.warRooms,
           [id]: { ...existing, checklist },
+        },
+      };
+    }
+    case 'warroom/privateMessages': {
+      const { id, privateMessages } = action.payload;
+      const existing = state.warRooms[id] || { id };
+      return {
+        ...state,
+        warRooms: {
+          ...state.warRooms,
+          [id]: { ...existing, privateMessages },
         },
       };
     }
@@ -949,11 +963,23 @@ export function AppProvider({ children }) {
       
       try {
         const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
+        
+        // Parse checklist JSON if present
+        let checklist = [];
+        if (meetingDetails.checklistJson) {
+          try {
+            checklist = JSON.parse(meetingDetails.checklistJson);
+          } catch (parseError) {
+            console.warn('[state] Failed to parse checklist JSON:', parseError);
+          }
+        }
+        
         return {
           id: meetingDetails.id,
           warRoomId: meetingDetails.id,
           incidentId: id,
-          ...meetingDetails
+          ...meetingDetails,
+          checklist
         };
       } catch (detailsError) {
         console.warn('[state] Failed to fetch existing meeting details:', detailsError?.message);
@@ -988,11 +1014,22 @@ export function AppProvider({ children }) {
       
       const fullDetails = await getFullMeetingDetails(meetingId);
       
+      // Parse checklist JSON if present
+      let checklist = [];
+      if (fullDetails?.checklistJson) {
+        try {
+          checklist = JSON.parse(fullDetails.checklistJson);
+        } catch (parseError) {
+          console.warn('[state] Failed to parse checklist JSON:', parseError);
+        }
+      }
+      
       const warRoom = {
         id: meetingId,
         warRoomId: meetingId,
         incidentId: id,
-        ...(fullDetails || response)
+        ...(fullDetails || response),
+        checklist
       };
       
       await reloadIncidentAfterWarRoom(id);
@@ -1091,11 +1128,22 @@ export function AppProvider({ children }) {
           console.warn('Could not fetch full meeting details:', detailsError);
         }
         
+        // Parse checklist JSON if present
+        let checklist = [];
+        if (fullDetails.checklistJson) {
+          try {
+            checklist = JSON.parse(fullDetails.checklistJson);
+          } catch (parseError) {
+            console.warn('[state] Failed to parse checklist JSON:', parseError);
+          }
+        }
+        
         const warRoom = {
           id: meetingId,
           warRoomId: meetingId,
           code: code,
-          ...fullDetails
+          ...fullDetails,
+          checklist
         };
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
@@ -1172,11 +1220,40 @@ export function AppProvider({ children }) {
       }
     };
 
-    const updateWarRoomChecklist = (warRoomId, checklist) => {
-      const existing = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
-      const updated = { ...existing, checklist };
-      cacheRef.current.warRooms.set(warRoomId, updated);
-      dispatch({ type: 'warroom/checklist', payload: { id: warRoomId, checklist } });
+
+
+    // AI Private Chat functions
+    const loadAIPrivateMessages = async (warRoomId) => {
+      try {
+        const messages = await getAIPrivateMessages(warRoomId, state.settings.apiBaseUrl);
+        const existing = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
+        const updated = { ...existing, privateMessages: messages };
+        cacheRef.current.warRooms.set(warRoomId, updated);
+        dispatch({ type: 'warroom/privateMessages', payload: { id: warRoomId, privateMessages: messages } });
+        return messages;
+      } catch (error) {
+        addToast({
+          title: 'No se pudieron cargar los mensajes privados de IA',
+          description: error.message || 'Revisa la API.',
+          tone: 'warn',
+        });
+        return [];
+      }
+    };
+
+    const sendAIPrivateMessageAction = async (warRoomId, content) => {
+      try {
+        await sendAIPrivateMessage(warRoomId, content, state.settings.apiBaseUrl);
+        // Reload messages to get both user message and AI response
+        setTimeout(() => loadAIPrivateMessages(warRoomId), 500);
+      } catch (error) {
+        addToast({
+          title: 'No se pudo enviar el mensaje privado a la IA',
+          description: error.message || 'Intenta nuevamente.',
+          tone: 'danger',
+        });
+        throw error;
+      }
     };
 
     const saveSettings = (updates) => {
@@ -1505,7 +1582,9 @@ export function AppProvider({ children }) {
       joinWarRoom,
       loadWarRoomMessages,
       sendWarRoomMessage,
-      updateWarRoomChecklist,
+
+      loadAIPrivateMessages,
+      sendAIPrivateMessage: sendAIPrivateMessageAction,
       saveSettings,
       authStartGoogle: authStartGoogleAction,
       authHandleReturn: authHandleReturnAction,
@@ -1536,6 +1615,10 @@ export function AppProvider({ children }) {
   );
 }
 
+AppProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 export function useAppState() {
   const context = useContext(AppStateContext);
   if (!context) {
@@ -1550,4 +1633,24 @@ export function useAppActions() {
     throw new Error('useAppActions debe usarse dentro de AppProvider');
   }
   return context;
+}
+
+// Helper to check if user has admin role
+export function isAdmin(user) {
+  if (!user) return false;
+  const role = user.role;
+  const authorities = user.authorities;
+  
+  if (typeof role === 'string' && (role === 'ROLE_ADMIN' || role === 'ADMIN' || role === 'admin')) {
+    return true;
+  }
+  
+  if (Array.isArray(authorities)) {
+    return authorities.some(auth => {
+      const authStr = typeof auth === 'string' ? auth : auth?.authority || '';
+      return authStr === 'ROLE_ADMIN' || authStr === 'ADMIN';
+    });
+  }
+  
+  return false;
 }

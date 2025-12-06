@@ -9,6 +9,7 @@ import Pill from '../components/Pill.jsx';
 import SearchBox from '../components/SearchBox.jsx';
 import MonitorTraffic from '../components/MonitorTraffic/MonitorTraffic.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
+import { TrafficUpload } from '../components/TrafficUpload.jsx';
 
 const statusOptions = [
   { value: '', label: 'Todos' },
@@ -86,6 +87,7 @@ function Dashboard() {
     description: '',
     icon: '🔄'
   });
+  const [showUpload, setShowUpload] = useState(false);
   const itemsPerPage = 5;
   const isAdmin = auth?.user?.role?.includes('ADMIN') || auth?.user?.roles?.includes('ADMIN') || auth?.user?.role === 'ROLE_ADMIN';
   
@@ -263,17 +265,23 @@ function Dashboard() {
         render: (value) => <Pill tone={severityTone[value] || 'neutral'}>{value}</Pill>,
       },
       {
-        key: 'detection',
-        label: 'Detección',
-        render: (_, row) => {
-          const modelLabel = row.detection?.model_label;
-          const modelScore = row.detection?.model_score;
-          const modelVersion = row.detection?.model_version;
-          if (!modelLabel) return '—';
-          return `${modelLabel}${modelScore !== undefined ? ` (${modelScore})` : ''}${
-            modelVersion ? ` · v${modelVersion}` : ''
-          }`;
-        },
+        key: 'mlDescription',
+        label: 'Descripción',
+        render: (_, row) => row.mlDescription || '—',
+      },
+      {
+        key: 'category',
+        label: 'Categoría',
+        render: (_, row) => row.category || '—',
+      },
+      {
+        key: 'attackProbability',
+        label: 'Probabilidad',
+        render: (_, row) => (
+          row.attackProbability !== undefined && row.attackProbability !== null
+            ? `${(row.attackProbability * 100).toFixed(1)}%`
+            : '—'
+        ),
       },
       {
         key: 'createdAt',
@@ -543,6 +551,37 @@ function Dashboard() {
     }
   };
 
+  const handleUploadSuccess = (result) => {
+    setShowUpload(false);
+    
+    // Show success toast with results
+    const alertsCreated = result.alertsCreated || 0;
+      let description = 'Se analizó el archivo correctamente. ';
+      if (alertsCreated > 0) {
+        description += 'Se crearon ' + alertsCreated + ' alerta(s).';
+      } else {
+        description += 'No se detectaron amenazas.';
+      }
+      addToast({
+        title: '✅ Análisis completado',
+        description,
+        tone: alertsCreated > 0 ? 'warn' : 'success'
+      });
+
+    // Reload incidents to show new alerts
+    setTimeout(() => {
+      loadIncidents({});
+    }, 500);
+  };
+
+  const handleUploadError = (errorMessage) => {
+    addToast({
+      title: '❌ Error en el análisis',
+      description: errorMessage || 'No se pudo analizar el archivo. Intenta nuevamente.',
+      tone: 'danger'
+    });
+  };
+
   return (
     <div className="page dashboard-page">
       <section className="page-header">
@@ -594,7 +633,7 @@ function Dashboard() {
           <span className="filter-label">Rango</span>
           <div className="range-inputs">
             <label>
-              Desde
+              Desde{' '}
               <input
                 type="date"
                 value={filters.from}
@@ -602,7 +641,7 @@ function Dashboard() {
               />
             </label>
             <label>
-              Hasta
+              Hasta{' '}
               <input
                 type="date"
                 value={filters.to}
@@ -623,6 +662,35 @@ function Dashboard() {
           </section>
 
           <MonitorTraffic />
+
+          {/* Sección de carga de archivos para análisis ML */}
+          <section className="upload-section">
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h3>Análisis de tráfico con ML</h3>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary, #64748b)', marginTop: '0.25rem' }}>
+                  Sube un archivo JSON con datos de tráfico de red para analizar amenazas potenciales
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowUpload(!showUpload)}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {showUpload ? '✕ Cancelar' : '📤 Subir archivo'}
+              </button>
+            </header>
+            
+            {showUpload && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <TrafficUpload
+                  onUploadSuccess={handleUploadSuccess}
+                  onUploadError={handleUploadError}
+                />
+              </div>
+            )}
+          </section>
 
           <section className="alerts-section" aria-live="polite">
         <header>

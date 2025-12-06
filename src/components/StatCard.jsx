@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const StatCard = memo(function StatCard({ label, value, helper, tone = 'default' }) {
   return (
@@ -9,5 +10,12 @@ const StatCard = memo(function StatCard({ label, value, helper, tone = 'default'
     </article>
   );
 });
+
+StatCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  helper: PropTypes.string,
+  tone: PropTypes.string,
+};
 
 export default StatCard;

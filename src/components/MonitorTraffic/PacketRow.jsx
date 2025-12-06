@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import PropTypes from 'prop-types';
 
 const severityClass = {
   critical: 'is-critical',
@@ -81,5 +82,29 @@ const PacketRow = memo(function PacketRow({ packet, index, selected, onSelect, o
     </button>
   );
 });
+
+PacketRow.propTypes = {
+  packet: PropTypes.shape({
+    id: PropTypes.string,
+    timestamp: PropTypes.string,
+    src: PropTypes.string,
+    srcPort: PropTypes.number,
+    dst: PropTypes.string,
+    dstPort: PropTypes.number,
+    proto: PropTypes.string,
+    length: PropTypes.number,
+    info: PropTypes.string,
+    severity: PropTypes.string,
+    incidentId: PropTypes.string,
+    model_label: PropTypes.string,
+    model_score: PropTypes.number,
+    model_version: PropTypes.string,
+    detection: PropTypes.object,
+  }).isRequired,
+  index: PropTypes.number.isRequired,
+  selected: PropTypes.bool.isRequired,
+  onSelect: PropTypes.func.isRequired,
+  onInspect: PropTypes.func,
+};
 
 export default PacketRow;

@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import PropTypes from 'prop-types';
 
 const WINDOW_SECONDS = 45;
 
@@ -65,5 +66,13 @@ const TrafficCanvas = memo(function TrafficCanvas({ packets = [] }) {
     </svg>
   );
 });
+
+TrafficCanvas.propTypes = {
+  packets: PropTypes.arrayOf(
+    PropTypes.shape({
+      timestamp: PropTypes.string,
+    })
+  ),
+};
 
 export default TrafficCanvas;

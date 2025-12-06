@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import PropTypes from 'prop-types';
 
 const toneLabels = {
   info: 'Información',
@@ -25,5 +26,13 @@ const Toast = memo(function Toast({ id, title, description, tone = 'info', onDis
     </div>
   );
 });
+
+Toast.propTypes = {
+  id: PropTypes.string.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  tone: PropTypes.string,
+  onDismiss: PropTypes.func,
+};
 
 export default Toast;
