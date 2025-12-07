@@ -5,6 +5,7 @@ import { AppProvider } from './app/state.js'
 import './styles/variables.css'
 import './styles/layout.css'
 import './styles/components.css'
+import './styles/executive-metrics.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -206,7 +206,8 @@ describe('state.js - War Room Actions', () => {
     expect(Array.isArray(messages)).toBe(true);
   });
 
-  it('updateWarRoomChecklist debe actualizar checklist', () => {
+  // Test deshabilitado: la función updateWarRoomChecklist fue removida del código
+  it.skip('updateWarRoomChecklist debe actualizar checklist', () => {
     const { result } = renderHook(
       () => ({ state: useAppState(), actions: useAppActions() }),
       { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
@@ -449,5 +450,126 @@ describe('state.js - Estado Inicial', () => {
     expect(result.current.settings).toHaveProperty('theme');
     expect(result.current.settings).toHaveProperty('apiBaseUrl');
     expect(result.current.settings).toHaveProperty('severityThresholds');
+  });
+});
+
+describe('state.js - Incident Actions', () => {
+  it('loadIncidents debe cargar lista de incidentes', async () => {
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    await act(async () => {
+      await result.current.actions.loadIncidents();
+    });
+
+    expect(result.current.state.incidents).toBeDefined();
+    expect(result.current.state.loading.incidents).toBe(false);
+  });
+
+  it('updateIncidentStatus debe actualizar estado de incidente', async () => {
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    await act(async () => {
+      await result.current.actions.updateIncidentStatus('INC-001', 'conocido');
+    });
+
+    expect(result.current.state.loading.incident).toBe(false);
+  });
+
+  it('debe manejar errores al cargar incidentes', async () => {
+    const { getIncidents } = await import('../api.js');
+    getIncidents.mockRejectedValueOnce(new Error('Network error'));
+
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    await act(async () => {
+      await result.current.actions.loadIncidents();
+    });
+
+    expect(result.current.state.loading.incidents).toBe(false);
+  });
+});
+
+describe('state.js - Traffic Filters', () => {
+  it('debe aplicar filtros de severidad', () => {
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    act(() => {
+      result.current.actions.setTrafficFilters({ severity: 'high' });
+    });
+
+    expect(result.current.state.traffic.filters.severity).toBe('high');
+  });
+
+  it('debe aplicar filtros de protocolo', () => {
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    act(() => {
+      result.current.actions.setTrafficFilters({ protocol: 'TCP' });
+    });
+
+    expect(result.current.state.traffic.filters.protocol).toBe('TCP');
+  });
+
+  it('debe aplicar múltiples filtros', () => {
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    act(() => {
+      result.current.actions.setTrafficFilters({ 
+        severity: 'critical',
+        protocol: 'HTTP',
+        source: '192.168.1.1' // NOSONAR: Test data only - safe for testing
+      });
+    });
+
+    expect(result.current.state.traffic.filters.severity).toBe('critical');
+    expect(result.current.state.traffic.filters.protocol).toBe('HTTP');
+    expect(result.current.state.traffic.filters.source).toBe('192.168.1.1'); // NOSONAR: Test data only - safe for testing
+  });
+});
+
+describe('state.js - Toast Management', () => {
+  it('debe remover toast después de timeout', async () => {
+    vi.useFakeTimers();
+    
+    const { result } = renderHook(
+      () => ({ state: useAppState(), actions: useAppActions() }),
+      { wrapper: ({ children }) => createElement(AppProvider, {}, children) }
+    );
+
+    act(() => {
+      result.current.actions.addToast({
+        title: 'Test',
+        description: 'Test toast',
+        tone: 'info',
+      });
+    });
+
+    expect(result.current.state.toasts).toHaveLength(1);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(result.current.state.toasts).toHaveLength(0);
+    
+    vi.useRealTimers();
   });
 });

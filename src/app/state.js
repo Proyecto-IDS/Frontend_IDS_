@@ -17,6 +17,8 @@ import {
   postWarRoomMessage as apiPostWarRoomMessage,
   getAIPrivateMessages,
   sendAIPrivateMessage,
+  getAlertMLMetrics,
+  getAlertIdFromIncidentId,
   getTrafficRecent,
   getTrafficPacketById,
   connectAlertsWebSocket,
@@ -271,6 +273,17 @@ function reducer(state, action) {
         warRooms: {
           ...state.warRooms,
           [id]: { ...existing, privateMessages },
+        },
+      };
+    }
+    case 'warroom/mlMetrics': {
+      const { id, mlMetrics } = action.payload;
+      const existing = state.warRooms[id] || { id };
+      return {
+        ...state,
+        warRooms: {
+          ...state.warRooms,
+          [id]: { ...existing, mlMetrics },
         },
       };
     }
@@ -883,6 +896,25 @@ export function AppProvider({ children }) {
       }
     };
 
+    const forceReloadIncident = async (id) => {
+      dispatch({ type: 'incident/loading', payload: true });
+      try {
+        // Invalidar caché primero
+        cacheRef.current.incidentDetails.delete(id);
+        
+        // Recargar desde backend
+        const incident = await getIncidentById(id, state.settings.apiBaseUrl);
+        cacheRef.current.incidentDetails.set(id, incident);
+        dispatch({ type: 'incident/loaded', payload: incident });
+        return incident;
+      } catch (error) {
+        console.warn('[state] Failed to force reload incident:', error?.message);
+        return await tryFallbackIncident(id);
+      } finally {
+        dispatch({ type: 'incident/loading', payload: false });
+      }
+    };
+
     const updateIncidentStatus = async (id, actionKey) => {
       try {
         let incident = null;
@@ -957,30 +989,54 @@ export function AppProvider({ children }) {
       return null;
     };
 
+    // Helper: try to get alert ID for meeting
+    const tryGetAlertIdForMeeting = async (meetingId, incidentId) => {
+      let alertId = null;
+      
+      console.log('[state] Trying to get alertId. MeetingId:', meetingId, 'IncidentId:', incidentId);
+      
+      // Method 1: Search using meetingId
+      alertId = await tryGetAlertIdByMeetingId(meetingId);
+      if (alertId) return alertId;
+      
+      // Method 2: Search using incidentId
+      if (incidentId) {
+        alertId = await tryGetAlertIdByIncidentId(incidentId);
+        if (alertId) return alertId;
+      }
+      
+      // Method 3: Fallback to incident object
+      if (incidentId) {
+        alertId = await tryGetAlertIdFromIncident(incidentId);
+      }
+      
+      return alertId;
+    };
+
     // Helper: fetch existing meeting
     const fetchExistingMeeting = async (id) => {
       if (Number.isNaN(id)) return null;
       
       try {
         const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
+        const checklist = parseWarRoomChecklist(meetingDetails);
         
-        // Parse checklist JSON if present
-        let checklist = [];
-        if (meetingDetails.checklistJson) {
-          try {
-            checklist = JSON.parse(meetingDetails.checklistJson);
-          } catch (parseError) {
-            console.warn('[state] Failed to parse checklist JSON:', parseError);
-          }
-        }
-        
-        return {
+        const warRoom = {
           id: meetingDetails.id,
           warRoomId: meetingDetails.id,
           incidentId: id,
           ...meetingDetails,
           checklist
         };
+        
+        const alertId = await tryGetAlertIdForMeeting(warRoom.id, warRoom.incidentId);
+        if (alertId) {
+          warRoom.alertId = alertId;
+        }
+        
+        await loadWarRoomMLMetrics(warRoom, alertId, warRoom.id);
+        
+        return warRoom;
       } catch (detailsError) {
         console.warn('[state] Failed to fetch existing meeting details:', detailsError?.message);
         return null;
@@ -1007,22 +1063,102 @@ export function AppProvider({ children }) {
       }
     };
 
+    // Helper: parse checklist from war room details
+    const parseWarRoomChecklist = (fullDetails) => {
+      if (!fullDetails?.checklistJson) return [];
+      try {
+        return JSON.parse(fullDetails.checklistJson);
+      } catch (parseError) {
+        console.warn('[state] Failed to parse checklist JSON:', parseError);
+        return [];
+      }
+    };
+
+    // Helper: attempt to get alert ID using meeting ID
+    const tryGetAlertIdByMeetingId = async (meetingId) => {
+      try {
+        const alertId = await getAlertIdFromIncidentId(meetingId, state.settings.apiBaseUrl);
+        if (alertId) {
+          console.log('[state] ✓ Obtained alertId using meetingId:', alertId);
+          return alertId;
+        }
+      } catch (directError) {
+        console.warn('[state] Search by meetingId failed:', directError?.message);
+      }
+      return null;
+    };
+
+    // Helper: attempt to get alert ID using incident ID
+    const tryGetAlertIdByIncidentId = async (id) => {
+      try {
+        const alertId = await getAlertIdFromIncidentId(id, state.settings.apiBaseUrl);
+        if (alertId) {
+          console.log('[state] ✓ Obtained alertId using incidentId:', alertId);
+          return alertId;
+        }
+      } catch (directError) {
+        console.warn('[state] Search by incidentId failed:', directError?.message);
+      }
+      return null;
+    };
+
+    // Helper: attempt to get alert ID from incident object
+    const tryGetAlertIdFromIncident = async (id) => {
+      try {
+        const incident = await getIncidentById(id, state.settings.apiBaseUrl);
+        if (incident?._alertId) {
+          console.log('[state] ✓ Obtained alertId from incident object:', incident._alertId);
+          return incident._alertId;
+        }
+      } catch (incidentError) {
+        console.warn('[state] Failed to fetch incident for alertId:', incidentError?.message);
+      }
+      return null;
+    };
+
+    // Helper: resolve alert ID for war room
+    const resolveAlertId = async (warRoom, meetingId, id) => {
+      let alertId = warRoom.alertId;
+      if (alertId) return alertId;
+
+      console.log('[state] Trying to get alertId for new warRoom. MeetingId:', meetingId, 'IncidentId:', id);
+      
+      alertId = await tryGetAlertIdByMeetingId(meetingId);
+      if (alertId) return alertId;
+      
+      alertId = await tryGetAlertIdByIncidentId(id);
+      if (alertId) return alertId;
+      
+      return await tryGetAlertIdFromIncident(id);
+    };
+
+    // Helper: load ML metrics for war room
+    const loadWarRoomMLMetrics = async (warRoom, alertId, meetingId) => {
+      if (!alertId || !state.settings.apiBaseUrl) {
+        console.warn('[state] ✗ No alertId available. MeetingId:', meetingId);
+        return warRoom;
+      }
+
+      try {
+        const mlMetrics = await getAlertMLMetrics(state.settings.apiBaseUrl, alertId);
+        if (mlMetrics) {
+          warRoom.mlMetrics = mlMetrics;
+          console.log('[state] ✓ Loaded ML metrics for new warRoom:', meetingId, 'alertId:', alertId);
+        }
+      } catch (metricsError) {
+        console.warn('[state] Failed to load ML metrics:', metricsError?.message);
+      }
+      
+      return warRoom;
+    };
+
     // Helper: create new war room
     const createNewWarRoom = async (id) => {
       const response = await postIncidentWarRoom(id, state.settings.apiBaseUrl);
       const meetingId = response.id || response.warRoomId;
       
       const fullDetails = await getFullMeetingDetails(meetingId);
-      
-      // Parse checklist JSON if present
-      let checklist = [];
-      if (fullDetails?.checklistJson) {
-        try {
-          checklist = JSON.parse(fullDetails.checklistJson);
-        } catch (parseError) {
-          console.warn('[state] Failed to parse checklist JSON:', parseError);
-        }
-      }
+      const checklist = parseWarRoomChecklist(fullDetails);
       
       const warRoom = {
         id: meetingId,
@@ -1032,6 +1168,12 @@ export function AppProvider({ children }) {
         checklist
       };
       
+      const alertId = await resolveAlertId(warRoom, meetingId, id);
+      if (alertId) {
+        warRoom.alertId = alertId;
+      }
+      
+      await loadWarRoomMLMetrics(warRoom, alertId, meetingId);
       await reloadIncidentAfterWarRoom(id);
       
       return warRoom;
@@ -1054,6 +1196,13 @@ export function AppProvider({ children }) {
         console.warn('Fallback war room failed', fallbackError);
         return null;
       }
+    };
+
+    const updateWarRoomMetrics = async (warRoomId, mlMetrics) => {
+      dispatch({ 
+        type: 'warroom/mlMetrics', 
+        payload: { id: warRoomId, mlMetrics } 
+      });
     };
 
     const openWarRoom = async (id) => {
@@ -1098,8 +1247,15 @@ export function AppProvider({ children }) {
       try {
         const messages = await getWarRoomMessages(warRoomId, state.settings.apiBaseUrl);
         dispatch({ type: 'warroom/messages', payload: { id: warRoomId, messages } });
+        
+        // Preserve existing warRoom data including mlMetrics when updating cache
+        const existingState = state.warRooms[warRoomId] || {};
         const cached = cacheRef.current.warRooms.get(warRoomId) || { id: warRoomId };
-        cacheRef.current.warRooms.set(warRoomId, { ...cached, messages });
+        cacheRef.current.warRooms.set(warRoomId, { 
+          ...cached, 
+          ...existingState,
+          messages 
+        });
         return messages;
       } catch (error) {
         addToast({
@@ -1128,15 +1284,7 @@ export function AppProvider({ children }) {
           console.warn('Could not fetch full meeting details:', detailsError);
         }
         
-        // Parse checklist JSON if present
-        let checklist = [];
-        if (fullDetails.checklistJson) {
-          try {
-            checklist = JSON.parse(fullDetails.checklistJson);
-          } catch (parseError) {
-            console.warn('[state] Failed to parse checklist JSON:', parseError);
-          }
-        }
+        const checklist = parseWarRoomChecklist(fullDetails);
         
         const warRoom = {
           id: meetingId,
@@ -1145,6 +1293,14 @@ export function AppProvider({ children }) {
           ...fullDetails,
           checklist
         };
+        
+        const alertId = await tryGetAlertIdForMeeting(warRoom.id, warRoom.incidentId);
+        if (alertId) {
+          warRoom.alertId = alertId;
+        }
+        
+        await loadWarRoomMLMetrics(warRoom, alertId, warRoom.id);
+        
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });
         return warRoom;
@@ -1576,13 +1732,14 @@ export function AppProvider({ children }) {
       dismissToast,
       loadIncidents,
       loadIncidentById,
+      forceReloadIncident,
       clearSelectedIncident,
       updateIncidentStatus,
       openWarRoom,
       joinWarRoom,
       loadWarRoomMessages,
       sendWarRoomMessage,
-
+      updateWarRoomMetrics,
       loadAIPrivateMessages,
       sendAIPrivateMessage: sendAIPrivateMessageAction,
       saveSettings,

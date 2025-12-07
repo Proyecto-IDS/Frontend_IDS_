@@ -4,7 +4,6 @@ import { isAdmin } from '../app/state.js';
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', description: 'Resumen de incidentes', adminOnly: false },
-  { key: 'settings', label: 'Configuración', description: 'Preferencias del sistema', adminOnly: true },
 ];
 
 const Sidebar = memo(function Sidebar({ collapsed, onToggle, activeKey, onNavigate, user, hideSettings = false }) {

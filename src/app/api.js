@@ -209,24 +209,60 @@ export async function getIncidentById(id, baseUrl) {
   if (!id || id === 'undefined') {
     return null;
   }
-  const alert = await get(baseUrl, `/api/alerts/by-incident/${id}`);
-  if (!alert) return null;
-  // Use the same mapping as mapAlertToIncident, but preserve updatedAt and warRoom fields
-  const incident = mapAlertToIncident(alert);
-  return {
-    ...incident,
-    createdAt: alert.timestamp || alert.createdAt,
-    updatedAt: alert.updatedAt,
-    status: alert.status || incident.status,
-    type: alert.type || incident.type,
-    warRoomCode: alert.warRoomCode,
-    warRoomStartTime: alert.warRoomStartTime,
-    warRoomDuration: alert.warRoomDuration,
-    relatedAssets: alert.relatedAssets || [],
-    notes: alert.notes,
-    timeline: alert.timeline || [],
-    aiSummary: alert.aiSummary,
-  };
+  
+  try {
+    // Try the by-incident endpoint first
+    const alert = await get(baseUrl, `/api/alerts/by-incident/${id}`);
+    if (!alert) return null;
+    
+    // Use the same mapping as mapAlertToIncident, but preserve updatedAt and warRoom fields
+    const incident = mapAlertToIncident(alert);
+    return {
+      ...incident,
+      createdAt: alert.timestamp || alert.createdAt,
+      updatedAt: alert.updatedAt,
+      status: alert.status || incident.status,
+      type: alert.type || incident.type,
+      warRoomCode: alert.warRoomCode,
+      warRoomStartTime: alert.warRoomStartTime,
+      warRoomDuration: alert.warRoomDuration,
+      relatedAssets: alert.relatedAssets || [],
+      notes: alert.notes,
+      timeline: alert.timeline || [],
+      aiSummary: alert.aiSummary,
+    };
+  } catch (error) {
+    console.warn(`[api] Failed to fetch incident ${id}:`, error?.message);
+    
+    // Fallback: try to find the alert by searching all alerts
+    try {
+      const alerts = await get(baseUrl, '/api/alerts', { limit: 1000 });
+      if (!Array.isArray(alerts)) return null;
+      
+      const matchingAlert = alerts.find(alert => alert.incidentId === id);
+      if (!matchingAlert) return null;
+      
+      console.log('[api] Found incident via fallback search, alertId:', matchingAlert.id);
+      const incident = mapAlertToIncident(matchingAlert);
+      return {
+        ...incident,
+        createdAt: matchingAlert.timestamp || matchingAlert.createdAt,
+        updatedAt: matchingAlert.updatedAt,
+        status: matchingAlert.status || incident.status,
+        type: matchingAlert.type || incident.type,
+        warRoomCode: matchingAlert.warRoomCode,
+        warRoomStartTime: matchingAlert.warRoomStartTime,
+        warRoomDuration: matchingAlert.warRoomDuration,
+        relatedAssets: matchingAlert.relatedAssets || [],
+        notes: matchingAlert.notes,
+        timeline: matchingAlert.timeline || [],
+        aiSummary: matchingAlert.aiSummary,
+      };
+    } catch (fallbackError) {
+      console.warn('[api] Fallback search also failed:', fallbackError?.message);
+      return null;
+    }
+  }
 }
 
 export async function postIncidentAction(id, body, baseUrl) {
@@ -247,6 +283,56 @@ export async function postIncidentWarRoom(id, baseUrl) {
 }
 
 // --- War Room / Meeting ---------------------------------------------------
+
+export async function getAlertIdFromIncidentId(incidentId, baseUrl) {
+  // Helper function to get alertId from incidentId
+  if (!incidentId || !baseUrl) return null;
+  
+  try {
+    // Try to get all alerts and find the one with matching incidentId or warRoomId
+    const alerts = await get(baseUrl, '/api/alerts', { limit: 1000 });
+    if (!Array.isArray(alerts)) return null;
+    
+    // Try multiple matching strategies
+    let matchingAlert = null;
+    
+    // Strategy 1: Match by incidentId (exact match)
+    matchingAlert = alerts.find(alert => alert.incidentId === incidentId);
+    
+    // Strategy 2: Match by warRoomId (the incidentId might be the meetingId)
+    if (!matchingAlert) {
+      matchingAlert = alerts.find(alert => alert.warRoomId === incidentId || String(alert.warRoomId) === String(incidentId));
+    }
+    
+    // Strategy 3: Check if incidentId is numeric and matches alert.id
+    if (!matchingAlert && !Number.isNaN(Number(incidentId))) {
+      const numericId = Number(incidentId);
+      matchingAlert = alerts.find(alert => alert.id === numericId);
+    }
+    
+    if (matchingAlert?.id) {
+      console.log('[api] ✓ Found alertId:', matchingAlert.id, 'for incidentId/meetingId:', incidentId);
+      console.log('[api]   Alert details:', {
+        alertId: matchingAlert.id,
+        incidentId: matchingAlert.incidentId,
+        warRoomId: matchingAlert.warRoomId,
+        prediction: matchingAlert.prediction
+      });
+      return matchingAlert.id;
+    }
+    
+    console.warn('[api] ✗ No alert found for incidentId/meetingId:', incidentId);
+    console.warn('[api]   Available alerts:', alerts.slice(0, 5).map(a => ({
+      id: a.id,
+      incidentId: a.incidentId,
+      warRoomId: a.warRoomId
+    })));
+    return null;
+  } catch (error) {
+    console.warn('[api] Failed to get alertId from incidentId:', error?.message);
+    return null;
+  }
+}
 
 export async function getMeetingDetails(meetingId, baseUrl) {
   // Get full meeting details including participants, status, etc.
@@ -360,7 +446,12 @@ export async function getAlertsTodayCount(baseUrl) {
 }
 
 export async function getAlertMLMetrics(baseUrl, alertId) {
-  return get(baseUrl, `/api/alerts/${alertId}/ml-metrics`);
+  try {
+    return await get(baseUrl, `/api/alerts/${alertId}/ml-metrics`);
+  } catch (error) {
+    console.warn(`[api] Failed to load ML metrics for alert ${alertId}:`, error?.message);
+    return null;
+  }
 }
 
 export async function getResolvedIncidents(baseUrl) {
@@ -505,6 +596,7 @@ export const api = {
   getAlertsToday,
   getAlertsTodayCount,
   getAlertMLMetrics,
+  getAlertIdFromIncidentId,
   getResolvedIncidents,
   markIncidentAsResolved,
 };
