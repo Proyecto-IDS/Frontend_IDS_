@@ -763,11 +763,6 @@
   min-height: 320px;
 }
 
-
-
-
-
-
 .chat-messages {
   display: flex;
   flex-direction: column;
@@ -1605,24 +1600,7 @@
 }
 
 
-/* Unificado: chat-panel, chat-messages y chat-form para WarRoom */
-.chat-panel {
-  flex: 2;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 320px;
-}
-.chat-messages {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space);
-  flex-grow: 1;
-  min-height: 80px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: var(--space);
-}
+/* Unificado: chat-form para WarRoom */
 .chat-form {
   display: flex;
   flex-direction: column;
@@ -1738,15 +1716,7 @@
   color: var(--text-secondary, #475569);
 }
 
-.protocol-content {
-  padding: 1rem;
-  background: var(--bg-secondary, #f8fafc);
-  border-radius: 6px;
-  white-space: pre-wrap;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--text);
-}
+
 
 .all-probabilities {
   display: flex;

@@ -35,6 +35,13 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper function to get severity tag class
+const getSeverityTagClass = (severity) => {
+  if (severity === 'critica') return 'danger';
+  if (severity === 'alta') return 'warn';
+  return 'info';
+};
+
 // Helper function to compute participant count
 const getParticipantCount = (warRoomState, isResolved) => {
   if (isResolved) {
@@ -111,7 +118,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
         <div class="info-group">
           <div class="info-label">Severidad</div>
           <div class="info-value">
-            <span class="tag tag-${incident.severity === 'critica' ? 'danger' : incident.severity === 'alta' ? 'warn' : 'info'}">${incident.severity}</span>
+            <span class="tag tag-${getSeverityTagClass(incident.severity)}">${incident.severity}</span>
           </div>
         </div>
       </div>
