@@ -11,9 +11,10 @@ function AllProbabilitiesChart({ probabilities }) {
 
   // Compute filtered entries (no TopN option anymore)
   const entries = useMemo(() => {
-    const arr = Object.entries(probabilities || {}).sort(([, a], [, b]) => b - a);
-    if (query && query.trim()) {
-      const q = query.trim().toLowerCase();
+    const arr = Object.entries(probabilities ?? {}).sort(([, a], [, b]) => b - a);
+    const trimmedQuery = query?.trim();
+    if (trimmedQuery) {
+      const q = trimmedQuery.toLowerCase();
       return arr.filter(([label]) => String(label).toLowerCase().includes(q));
     }
     return arr;
@@ -46,13 +47,12 @@ function AllProbabilitiesChart({ probabilities }) {
       </header>
 
       {/* Compact heatmap/grid view for many classes */}
-      <div className="ap-heatmap" role="list">
+      <ul className="ap-heatmap">
         {entries.map(([label, prob]) => {
           const percentage = getProbabilityPercentage(prob);
           return (
-            <div
+            <li
               key={label}
-              role="listitem"
               className="ap-cell"
               title={`${label}: ${percentage}`}
             >
@@ -63,10 +63,10 @@ function AllProbabilitiesChart({ probabilities }) {
                 <div className="ap-cell-label">{label}</div>
                 <div className="ap-cell-value">{percentage}</div>
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }

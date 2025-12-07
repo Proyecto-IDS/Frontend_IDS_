@@ -10,6 +10,8 @@
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 1.2rem;
   margin-top: 1.2rem;
+  list-style: none;
+  padding: 0;
 }
 .ap-cell {
   background: linear-gradient(90deg, #e0e7ff 0%, #f0fdfa 100%);

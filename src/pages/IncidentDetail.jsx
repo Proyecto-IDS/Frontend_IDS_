@@ -69,7 +69,13 @@ const getEndTimeSection = (incident, computeEndTime) => {
   return '';
 };
 
-// Helper: Render action buttons based on incident status
+// Helper function to get severity tag class
+const getSeverityTagClass = (severity) => {
+  if (severity === 'critica') return 'danger';
+  if (severity === 'alta') return 'warn';
+  return 'info';
+};
+
 // Función para generar y descargar el PDF del informe
 const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
   // Crear el contenido HTML para el PDF
@@ -124,7 +130,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
         <div class="info-group">
           <div class="info-label">Severidad</div>
           <div class="info-value">
-            <span class="tag tag-${incident.severity === 'critica' ? 'danger' : incident.severity === 'alta' ? 'warn' : 'info'}">${incident.severity}</span>
+            <span class="tag tag-${getSeverityTagClass(incident.severity)}">${incident.severity}</span>
           </div>
         </div>
       </div>
