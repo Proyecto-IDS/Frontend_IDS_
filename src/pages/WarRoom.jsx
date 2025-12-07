@@ -559,6 +559,11 @@ function WarRoom({ params }) {
       }, 200);
     } catch (error) {
       console.error('Failed to send message:', error);
+      addToast({
+        title: 'Error al enviar mensaje',
+        description: error.message || 'No se pudo enviar el mensaje',
+        tone: 'danger'
+      });
     }
   };
 
@@ -651,17 +656,6 @@ function WarRoom({ params }) {
       console.warn('[WarRoom] Exit navigation failed:', error_?.message);
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
-  };
-
-  // Helper para obtener tono de severidad
-  const getSeverityTone = (severity) => {
-    if (!severity) return 'muted';
-    const lower = String(severity).toLowerCase();
-    if (lower.includes('critica') || lower === 'critical') return 'danger';
-    if (lower.includes('alta') || lower === 'high') return 'warn';
-    if (lower.includes('media') || lower === 'medium') return 'info';
-    if (lower.includes('falso') || lower.includes('false')) return 'info';
-    return 'success';
   };
 
   // Memorizar el panel de métricas para evitar re-renders
@@ -894,14 +888,14 @@ function WarRoom({ params }) {
 
       {/* Modal para mostrar la gráfica completa */}
       {showProbModal && (
-        <div 
-          className="modal-backdrop" 
-          onClick={() => setShowProbModal(false)}
-          onKeyDown={(e) => e.key === 'Escape' && setShowProbModal(false)}
-          role="button"
-          tabIndex={0}
-          aria-label="Cerrar modal"
-        >
+        <div className="modal-backdrop">
+          <button
+            type="button"
+            className="modal-backdrop-overlay"
+            onClick={() => setShowProbModal(false)}
+            onKeyDown={(e) => e.key === 'Escape' && setShowProbModal(false)}
+            aria-label="Cerrar modal"
+          />
           <div className="modal" onClick={e => e.stopPropagation()}>
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
               <h3>Resultados de Probabilidades</h3>

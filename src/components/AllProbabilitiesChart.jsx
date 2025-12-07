@@ -7,8 +7,9 @@ function AllProbabilitiesChart({ probabilities }) {
   // Compute filtered entries (no TopN option anymore)
   const entries = useMemo(() => {
     const arr = Object.entries(probabilities || {}).sort(([, a], [, b]) => b - a);
-    if (query && query.trim()) {
-      const q = query.trim().toLowerCase();
+    const trimmedQuery = query?.trim();
+    if (trimmedQuery) {
+      const q = trimmedQuery.toLowerCase();
       return arr.filter(([label]) => String(label).toLowerCase().includes(q));
     }
     return arr;

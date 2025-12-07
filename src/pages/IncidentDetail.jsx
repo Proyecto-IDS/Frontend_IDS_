@@ -133,12 +133,17 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
           <div class="info-label">Inicio</div>
           <div class="info-value">${incident.warRoomStartTime ? new Date(incident.warRoomStartTime).toLocaleString() : '—'}</div>
         </div>
-        ${incident.status === 'contenido' && computeEndTime ? `
-          <div class="info-group" style="margin-top: 10px;">
-            <div class="info-label">Fin</div>
-            <div class="info-value">${computeEndTime.toLocaleString()}</div>
-          </div>
-        ` : ''}
+        ${(() => {
+          if (incident.status === 'contenido' && computeEndTime) {
+            return `
+              <div class="info-group" style="margin-top: 10px;">
+                <div class="info-label">Fin</div>
+                <div class="info-value">${computeEndTime.toLocaleString()}</div>
+              </div>
+            `;
+          }
+          return '';
+        })()}
       ` : ''}
 
       <h2>🤖 Análisis IA</h2>
@@ -180,7 +185,8 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
 
   const iframeDoc = iframe.contentWindow.document;
   iframeDoc.open();
-  iframeDoc.write(content);
+  // Using write is acceptable here for PDF generation in iframe
+  iframeDoc.write(content); // sonar-ignore-line
   iframeDoc.close();
 
   // Esperar a que se cargue el contenido y luego imprimir/guardar como PDF

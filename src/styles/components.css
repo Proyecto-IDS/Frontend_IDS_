@@ -625,6 +625,19 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-backdrop-overlay {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  z-index: 1000;
 }
 
 .modal {
