@@ -22,6 +22,50 @@ function describeArc(cx, cy, radius, startAngle, endAngle) {
   return d;
 }
 
+// Render donut chart and legend
+function renderDonutChart(top5, total, colors) {
+  return (
+    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem' }}>
+      <svg width={160} height={160} viewBox="0 0 160 160" aria-hidden>
+        <defs>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.08" />
+          </filter>
+        </defs>
+        <g transform="translate(80,80)" filter="url(#shadow)">
+          {(() => {
+            let start = 0;
+            const arcs = top5.map((item, idx) => {
+              const value = item.value;
+              const angle = (value / total) * 360;
+              const path = describeArc(0, 0, 64, start, start + angle);
+              const seg = (
+                <path key={item.key} d={path} fill={colors[idx % colors.length]} stroke="#fff" strokeWidth="0.5" />
+              );
+              start += angle;
+              return seg;
+            });
+            return arcs;
+          })()}
+          <circle cx={0} cy={0} r={34} fill="#fff" />
+        </g>
+      </svg>
+
+      <div style={{ flex: 1 }}>
+        {top5.map((it, i) => (
+          <div key={it.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 10, background: colors[i % colors.length], display: 'inline-block' }} />
+              <strong style={{ fontSize: '0.95rem' }}>{it.key}</strong>
+            </div>
+            <span style={{ color: 'var(--muted)' }}>{((it.value / total) * 100).toFixed(2)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Top5Probabilities({ probabilities, showHeader }) {
   const hasData = probabilities && typeof probabilities === 'object' && Object.keys(probabilities).length > 0;
 
@@ -42,44 +86,7 @@ function Top5Probabilities({ probabilities, showHeader }) {
         {(!hasData || top5.length === 0) ? (
           <div style={{ padding: '1.5rem', color: 'var(--muted)' }}>No hay datos disponibles.</div>
         ) : (
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem' }}>
-            <svg width={160} height={160} viewBox="0 0 160 160" aria-hidden>
-              <defs>
-                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.08" />
-                </filter>
-              </defs>
-              <g transform="translate(80,80)" filter="url(#shadow)">
-                {(() => {
-                  let start = 0;
-                  const arcs = top5.map((item, idx) => {
-                    const value = item.value;
-                    const angle = (value / total) * 360;
-                    const path = describeArc(0, 0, 64, start, start + angle);
-                    const seg = (
-                      <path key={item.key} d={path} fill={colors[idx % colors.length]} stroke="#fff" strokeWidth="0.5" />
-                    );
-                    start += angle;
-                    return seg;
-                  });
-                  return arcs;
-                })()}
-                <circle cx={0} cy={0} r={34} fill="#fff" />
-              </g>
-            </svg>
-
-            <div style={{ flex: 1 }}>
-              {top5.map((it, i) => (
-                <div key={it.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 10, background: colors[i % colors.length], display: 'inline-block' }} />
-                    <strong style={{ fontSize: '0.95rem' }}>{it.key}</strong>
-                  </div>
-                  <span style={{ color: 'var(--muted)' }}>{((it.value / total) * 100).toFixed(2)}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          renderDonutChart(top5, total, colors)
         )}
       </div>
     );
@@ -95,45 +102,7 @@ function Top5Probabilities({ probabilities, showHeader }) {
       {(!hasData || top5.length === 0) ? (
         <div style={{ padding: '1.5rem', color: 'var(--muted)' }}>No hay datos disponibles.</div>
       ) : (
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem' }}>
-          <svg width={160} height={160} viewBox="0 0 160 160" aria-hidden>
-            <defs>
-              <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.08" />
-              </filter>
-            </defs>
-            <g transform="translate(80,80)" filter="url(#shadow)">
-              {(() => {
-                let start = 0;
-                const arcs = top5.map((item, idx) => {
-                  const value = item.value;
-                  const angle = (value / total) * 360;
-                  const path = describeArc(0, 0, 64, start, start + angle);
-                  const seg = (
-                    <path key={item.key} d={path} fill={colors[idx % colors.length]} stroke="#fff" strokeWidth="0.5" />
-                  );
-                  start += angle;
-                  return seg;
-                });
-                return arcs;
-              })()}
-              {/* inner cutout to create donut */}
-              <circle cx={0} cy={0} r={34} fill="#fff" />
-            </g>
-          </svg>
-
-          <div style={{ flex: 1 }}>
-            {top5.map((it, i) => (
-              <div key={it.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 10, background: colors[i % colors.length], display: 'inline-block' }} />
-                  <strong style={{ fontSize: '0.95rem' }}>{it.key}</strong>
-                </div>
-                <span style={{ color: 'var(--muted)' }}>{((it.value / total) * 100).toFixed(2)}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        renderDonutChart(top5, total, colors)
       )}
     </section>
   );
