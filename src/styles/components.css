@@ -634,8 +634,6 @@
   position: absolute;
   inset: 0;
   background: transparent;
-  border: none;
-  padding: 0;
   cursor: pointer;
   z-index: 1000;
 }

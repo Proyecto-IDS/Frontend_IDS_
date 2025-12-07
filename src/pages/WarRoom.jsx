@@ -160,7 +160,8 @@ function WarRoom({ params }) {
     const id = globalThis.setTimeout(() => {
       try {
         el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      } catch (e) {
+      } catch (scrollError) {
+        // Fallback for browsers that don't support smooth scroll
         el.scrollTop = el.scrollHeight;
       }
     }, 50);
@@ -549,7 +550,8 @@ function WarRoom({ params }) {
       if (el) {
         try {
           el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-        } catch (e) {
+        } catch (scrollError) {
+          // Fallback for browsers that don't support smooth scroll
           el.scrollTop = el.scrollHeight;
         }
       }
@@ -889,14 +891,13 @@ function WarRoom({ params }) {
       {/* Modal para mostrar la gráfica completa */}
       {showProbModal && (
         <div className="modal-backdrop">
-          <button
-            type="button"
+          <div 
             className="modal-backdrop-overlay"
             onClick={() => setShowProbModal(false)}
             onKeyDown={(e) => e.key === 'Escape' && setShowProbModal(false)}
             aria-label="Cerrar modal"
           />
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
               <h3>Resultados de Probabilidades</h3>
             </header>
