@@ -902,6 +902,11 @@ function WarRoom({ params }) {
               setShowProbModal(false);
             }
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || (e.key === 'Enter' && e.target === e.currentTarget)) {
+              setShowProbModal(false);
+            }
+          }}
           aria-label="Cerrar modal"
           type="button"
         >
@@ -909,7 +914,6 @@ function WarRoom({ params }) {
             open
             aria-labelledby="prob-modal-title"
             className="modal"
-            onClick={(e) => e.stopPropagation()}
           >
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
               <h3 id="prob-modal-title">Resultados de Probabilidades</h3>

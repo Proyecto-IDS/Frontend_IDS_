@@ -207,9 +207,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
     
     // Remove iframe and clean up URL after a delay
     setTimeout(() => {
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
+      iframe.remove();
       URL.revokeObjectURL(url);
     }, 1000);
   };
