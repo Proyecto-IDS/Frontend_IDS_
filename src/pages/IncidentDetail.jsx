@@ -191,7 +191,6 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
   iframe.style.border = 'none';
   document.body.appendChild(iframe);
 
-  const iframeDoc = iframe.contentWindow.document;
   // Use modern approach instead of deprecated write()
   const blob = new Blob([content], { type: 'text/html' });
   const url = URL.createObjectURL(blob);

@@ -895,25 +895,21 @@ function WarRoom({ params }) {
 
       {/* Modal para mostrar la gráfica completa */}
       {showProbModal && (
-        <div 
+        <button 
           className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowProbModal(false);
             }
           }}
+          aria-label="Cerrar modal"
+          type="button"
         >
-          <div 
-            role="dialog" 
-            aria-modal="true" 
+          <dialog 
+            open
             aria-labelledby="prob-modal-title"
             className="modal"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setShowProbModal(false);
-              }
-            }}
-            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
           >
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
               <h3 id="prob-modal-title">Resultados de Probabilidades</h3>
@@ -924,8 +920,8 @@ function WarRoom({ params }) {
             <div className="modal-actions">
               <button className="btn" onClick={() => setShowProbModal(false)}>Cerrar</button>
             </div>
-          </div>
-        </div>
+          </dialog>
+        </button>
       )}
 
       <ConfirmDialog
