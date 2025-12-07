@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
-import Modal from './Modal.jsx';
+
+// Helper to compute CSS variable string
+const getProbabilityPercentage = (prob) => {
+  return `${(prob * 100).toFixed(2)}%`;
+};
 
 function AllProbabilitiesChart({ probabilities }) {
   const [query, setQuery] = useState('');
@@ -43,22 +47,25 @@ function AllProbabilitiesChart({ probabilities }) {
 
       {/* Compact heatmap/grid view for many classes */}
       <div className="ap-heatmap" role="list">
-        {entries.map(([label, prob]) => (
-          <div
-            key={label}
-            role="listitem"
-            className="ap-cell"
-            title={`${label}: ${(prob * 100).toFixed(2)}%`}
-          >
+        {entries.map(([label, prob]) => {
+          const percentage = getProbabilityPercentage(prob);
+          return (
             <div
-              className="ap-cell-inner"
-              style={{ ['--p']: `${(prob * 100).toFixed(2)}%` }}
+              key={label}
+              role="listitem"
+              className="ap-cell"
+              title={`${label}: ${percentage}`}
             >
-              <div className="ap-cell-label">{label}</div>
-              <div className="ap-cell-value">{(prob * 100).toFixed(2)}%</div>
+              <div
+                className="ap-cell-inner"
+                style={{ ['--p']: percentage }}
+              >
+                <div className="ap-cell-label">{label}</div>
+                <div className="ap-cell-value">{percentage}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

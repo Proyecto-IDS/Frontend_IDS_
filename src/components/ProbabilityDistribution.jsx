@@ -1,6 +1,13 @@
 import { useMemo } from 'react';
 import PropTypes from 'prop-types';
 
+// Helper to get color based on probability threshold
+const getProbabilityColor = (probability) => {
+  if (probability > 0.5) return '#ef4444';
+  if (probability > 0.3) return '#f59e0b';
+  return '#10b981';
+};
+
 function ProbabilityDistribution({ probabilities }) {
   const topThreats = useMemo(() => {
     if (!probabilities) return [];
@@ -43,7 +50,7 @@ function ProbabilityDistribution({ probabilities }) {
                 className="distribution-bar"
                 style={{
                   width: `${(probability / maxValue) * 100}%`,
-                  backgroundColor: probability > 0.5 ? '#ef4444' : probability > 0.3 ? '#f59e0b' : '#10b981',
+                  backgroundColor: getProbabilityColor(probability),
                 }}
               />
             </div>

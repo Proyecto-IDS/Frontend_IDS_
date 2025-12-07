@@ -2,18 +2,16 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
-import { connectAlertsWebSocket, connectWarRoomChatWebSocket, getAlertMLMetrics } from '../app/api.js';
+import { connectAlertsWebSocket, connectWarRoomChatWebSocket } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 import AIPrivateChat from '../components/AIPrivateChat.jsx';
-import Tag from '../components/Tag.jsx';
 import Top5Probabilities from '../components/Top5Probabilities.jsx';
 import AllProbabilitiesChart from '../components/AllProbabilitiesChart.jsx';
 import MetricsGauge from '../components/MetricsGauge.jsx';
 import ThreatLevelIndicator from '../components/ThreatLevelIndicator.jsx';
-import ProbabilityDistribution from '../components/ProbabilityDistribution.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -661,17 +659,6 @@ function WarRoom({ params }) {
       console.warn('[WarRoom] Exit navigation failed:', error_?.message);
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
-  };
-
-  // Helper para obtener tono de severidad
-  const getSeverityTone = (severity) => {
-    if (!severity) return 'muted';
-    const lower = String(severity).toLowerCase();
-    if (lower.includes('critica') || lower === 'critical') return 'danger';
-    if (lower.includes('alta') || lower === 'high') return 'warn';
-    if (lower.includes('media') || lower === 'medium') return 'info';
-    if (lower.includes('falso') || lower.includes('false')) return 'info';
-    return 'success';
   };
 
   // Memorizar el panel de métricas para evitar re-renders

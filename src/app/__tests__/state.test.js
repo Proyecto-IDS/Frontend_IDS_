@@ -535,13 +535,13 @@ describe('state.js - Traffic Filters', () => {
       result.current.actions.setTrafficFilters({ 
         severity: 'critical',
         protocol: 'HTTP',
-        source: '192.168.1.1'
+        source: '192.168.1.1' // NOSONAR: Test data only - safe for testing
       });
     });
 
     expect(result.current.state.traffic.filters.severity).toBe('critical');
     expect(result.current.state.traffic.filters.protocol).toBe('HTTP');
-    expect(result.current.state.traffic.filters.source).toBe('192.168.1.1');
+    expect(result.current.state.traffic.filters.source).toBe('192.168.1.1'); // NOSONAR: Test data only - safe for testing
   });
 });
 

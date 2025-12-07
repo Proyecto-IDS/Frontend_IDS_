@@ -989,22 +989,37 @@ export function AppProvider({ children }) {
       return null;
     };
 
+    // Helper: try to get alert ID for meeting
+    const tryGetAlertIdForMeeting = async (meetingId, incidentId) => {
+      let alertId = null;
+      
+      console.log('[state] Trying to get alertId. MeetingId:', meetingId, 'IncidentId:', incidentId);
+      
+      // Method 1: Search using meetingId
+      alertId = await tryGetAlertIdByMeetingId(meetingId);
+      if (alertId) return alertId;
+      
+      // Method 2: Search using incidentId
+      if (incidentId) {
+        alertId = await tryGetAlertIdByIncidentId(incidentId);
+        if (alertId) return alertId;
+      }
+      
+      // Method 3: Fallback to incident object
+      if (incidentId) {
+        alertId = await tryGetAlertIdFromIncident(incidentId);
+      }
+      
+      return alertId;
+    };
+
     // Helper: fetch existing meeting
     const fetchExistingMeeting = async (id) => {
       if (Number.isNaN(id)) return null;
       
       try {
         const meetingDetails = await getMeetingDetails(id, state.settings.apiBaseUrl);
-        
-        // Parse checklist JSON if present
-        let checklist = [];
-        if (meetingDetails.checklistJson) {
-          try {
-            checklist = JSON.parse(meetingDetails.checklistJson);
-          } catch (parseError) {
-            console.warn('[state] Failed to parse checklist JSON:', parseError);
-          }
-        }
+        const checklist = parseWarRoomChecklist(meetingDetails);
         
         const warRoom = {
           id: meetingDetails.id,
@@ -1014,65 +1029,12 @@ export function AppProvider({ children }) {
           checklist
         };
         
-        // Obtener alertId: primero del meeting, luego búsqueda múltiple
-        let alertId = warRoom.alertId;
-        
-        if (!alertId) {
-          console.log('[state] Trying to get alertId. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
-          
-          // Método 1: Buscar usando el meetingId (puede ser el warRoomId de la alert)
-          try {
-            alertId = await getAlertIdFromIncidentId(warRoom.id, state.settings.apiBaseUrl);
-            if (alertId) {
-              warRoom.alertId = alertId;
-              console.log('[state] ✓ Obtained alertId using meetingId:', alertId);
-            }
-          } catch (directError) {
-            console.warn('[state] Search by meetingId failed:', directError?.message);
-          }
-          
-          // Método 2: Si no funciona, buscar usando el incidentId
-          if (!alertId && warRoom.incidentId) {
-            try {
-              alertId = await getAlertIdFromIncidentId(warRoom.incidentId, state.settings.apiBaseUrl);
-              if (alertId) {
-                warRoom.alertId = alertId;
-                console.log('[state] ✓ Obtained alertId using incidentId:', alertId);
-              }
-            } catch (incidentError) {
-              console.warn('[state] Search by incidentId failed:', incidentError?.message);
-            }
-          }
-          
-          // Método 3: Fallback al método original
-          if (!alertId && warRoom.incidentId) {
-            try {
-              const incident = await getIncidentById(warRoom.incidentId, state.settings.apiBaseUrl);
-              if (incident?._alertId) {
-                alertId = incident._alertId;
-                warRoom.alertId = alertId;
-                console.log('[state] ✓ Obtained alertId from incident object:', alertId);
-              }
-            } catch (incidentError) {
-              console.warn('[state] Failed to fetch incident for alertId:', incidentError?.message);
-            }
-          }
+        const alertId = await tryGetAlertIdForMeeting(warRoom.id, warRoom.incidentId);
+        if (alertId) {
+          warRoom.alertId = alertId;
         }
         
-        // Load ML metrics if alertId is available
-        if (alertId && state.settings.apiBaseUrl) {
-          try {
-            const mlMetrics = await getAlertMLMetrics(state.settings.apiBaseUrl, alertId);
-            if (mlMetrics) {
-              warRoom.mlMetrics = mlMetrics;
-              console.log('[state] ✓ Loaded ML metrics for existing warRoom:', warRoom.id, 'alertId:', alertId);
-            }
-          } catch (metricsError) {
-            console.warn('[state] Failed to load ML metrics for existing meeting:', metricsError?.message);
-          }
-        } else {
-          console.warn('[state] ✗ No alertId available. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
-        }
+        await loadWarRoomMLMetrics(warRoom, alertId, warRoom.id);
         
         return warRoom;
       } catch (detailsError) {
@@ -1322,15 +1284,7 @@ export function AppProvider({ children }) {
           console.warn('Could not fetch full meeting details:', detailsError);
         }
         
-        // Parse checklist JSON if present
-        let checklist = [];
-        if (fullDetails.checklistJson) {
-          try {
-            checklist = JSON.parse(fullDetails.checklistJson);
-          } catch (parseError) {
-            console.warn('[state] Failed to parse checklist JSON:', parseError);
-          }
-        }
+        const checklist = parseWarRoomChecklist(fullDetails);
         
         const warRoom = {
           id: meetingId,
@@ -1340,51 +1294,12 @@ export function AppProvider({ children }) {
           checklist
         };
         
-        // Obtener alertId y cargar métricas ML
-        let alertId = warRoom.alertId;
-        
-        if (!alertId) {
-          console.log('[state joinWarRoom] Trying to get alertId. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
-          
-          // Método 1: Buscar usando el meetingId
-          try {
-            alertId = await getAlertIdFromIncidentId(warRoom.id, state.settings.apiBaseUrl);
-            if (alertId) {
-              warRoom.alertId = alertId;
-              console.log('[state joinWarRoom] ✓ Obtained alertId using meetingId:', alertId);
-            }
-          } catch (directError) {
-            console.warn('[state joinWarRoom] Search by meetingId failed:', directError?.message);
-          }
-          
-          // Método 2: Buscar usando el incidentId
-          if (!alertId && warRoom.incidentId) {
-            try {
-              alertId = await getAlertIdFromIncidentId(warRoom.incidentId, state.settings.apiBaseUrl);
-              if (alertId) {
-                warRoom.alertId = alertId;
-                console.log('[state joinWarRoom] ✓ Obtained alertId using incidentId:', alertId);
-              }
-            } catch (incidentError) {
-              console.warn('[state joinWarRoom] Search by incidentId failed:', incidentError?.message);
-            }
-          }
+        const alertId = await tryGetAlertIdForMeeting(warRoom.id, warRoom.incidentId);
+        if (alertId) {
+          warRoom.alertId = alertId;
         }
         
-        // Cargar métricas ML si hay alertId
-        if (alertId && state.settings.apiBaseUrl) {
-          try {
-            const mlMetrics = await getAlertMLMetrics(state.settings.apiBaseUrl, alertId);
-            if (mlMetrics) {
-              warRoom.mlMetrics = mlMetrics;
-              console.log('[state joinWarRoom] ✓ Loaded ML metrics for warRoom:', warRoom.id, 'alertId:', alertId);
-            }
-          } catch (metricsError) {
-            console.warn('[state joinWarRoom] Failed to load ML metrics:', metricsError?.message);
-          }
-        } else {
-          console.warn('[state joinWarRoom] ✗ No alertId available. MeetingId:', warRoom.id, 'IncidentId:', warRoom.incidentId);
-        }
+        await loadWarRoomMLMetrics(warRoom, alertId, warRoom.id);
         
         cacheRef.current.warRooms.set(warRoom.id, warRoom);
         dispatch({ type: 'warroom/loaded', payload: warRoom });

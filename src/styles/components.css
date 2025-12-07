@@ -1440,7 +1440,7 @@
   color: var(--primary);
 }
 
-/* Protocolo de respuesta - Mejor espaciado */
+/* protocol-content consolidado - definición única (eliminado duplicado línea 1741) */
 .protocol-content {
   line-height: 1.7;
   color: var(--text);
@@ -1605,7 +1605,7 @@
 }
 
 
-/* Unificado: chat-panel, chat-messages y chat-form para WarRoom */
+/* chat-panel consolidado - definición única (eliminado duplicado línea 1609) */
 .chat-panel {
   flex: 2;
   display: flex;
@@ -1738,15 +1738,7 @@
   color: var(--text-secondary, #475569);
 }
 
-.protocol-content {
-  padding: 1rem;
-  background: var(--bg-secondary, #f8fafc);
-  border-radius: 6px;
-  white-space: pre-wrap;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--text);
-}
+/* Eliminado selector duplicado .protocol-content (ya definido en línea 1443) */
 
 .all-probabilities {
   display: flex;
