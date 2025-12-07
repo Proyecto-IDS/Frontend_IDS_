@@ -161,6 +161,8 @@ function WarRoom({ params }) {
       try {
         el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
       } catch (e) {
+        // Fallback for browsers that don't support smooth scrolling
+        console.debug('Smooth scroll not supported, using fallback:', e.message);
         el.scrollTop = el.scrollHeight;
       }
     }, 50);
@@ -558,6 +560,8 @@ function WarRoom({ params }) {
         try {
           el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         } catch (e) {
+          // Fallback for browsers that don't support smooth scrolling
+          console.debug('Smooth scroll not supported, using fallback:', e.message);
           el.scrollTop = el.scrollHeight;
         }
       }
@@ -892,19 +896,25 @@ function WarRoom({ params }) {
       {/* Modal para mostrar la gráfica completa */}
       {showProbModal && (
         <div 
-          role="dialog" 
-          aria-modal="true" 
-          aria-labelledby="prob-modal-title"
-          className="modal-backdrop" 
-          onClick={() => setShowProbModal(false)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
               setShowProbModal(false);
             }
           }}
-          tabIndex={-1}
         >
-          <div className="modal" onClick={e => e.stopPropagation()} role="document">
+          <div 
+            role="dialog" 
+            aria-modal="true" 
+            aria-labelledby="prob-modal-title"
+            className="modal"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setShowProbModal(false);
+              }
+            }}
+            tabIndex={-1}
+          >
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
               <h3 id="prob-modal-title">Resultados de Probabilidades</h3>
             </header>

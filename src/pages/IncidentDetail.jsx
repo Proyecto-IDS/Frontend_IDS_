@@ -35,6 +35,12 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper function to format war room start time
+const formatStartTime = (startTime) => {
+  if (!startTime) return '—';
+  return new Date(startTime).toLocaleString();
+};
+
 // Helper function to compute participant count
 const getParticipantCount = (warRoomState, isResolved) => {
   if (isResolved) {
@@ -143,7 +149,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
         </div>
         <div class="info-group" style="margin-top: 10px;">
           <div class="info-label">Inicio</div>
-          <div class="info-value">${incident.warRoomStartTime ? new Date(incident.warRoomStartTime).toLocaleString() : '—'}</div>
+          <div class="info-value">${formatStartTime(incident.warRoomStartTime)}</div>
         </div>
         ${getEndTimeSection(incident, computeEndTime)}
       ` : ''}
@@ -186,12 +192,13 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentWindow.document;
-  iframeDoc.open();
-  iframeDoc.write(content);
-  iframeDoc.close();
+  // Use modern approach instead of deprecated write()
+  const blob = new Blob([content], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  iframe.src = url;
 
-  // Esperar a que se cargue el contenido y luego imprimir/guardar como PDF
-  setTimeout(() => {
+  // Wait for iframe to load, then print/save as PDF
+  iframe.onload = () => {
     try {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -199,13 +206,14 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
       console.warn('Error al imprimir:', error);
     }
     
-    // Remover el iframe después de un tiempo
+    // Remove iframe and clean up URL after a delay
     setTimeout(() => {
       if (iframe.parentNode) {
         iframe.parentNode.removeChild(iframe);
       }
+      URL.revokeObjectURL(url);
     }, 1000);
-  }, 500);
+  };
 };
 
 const renderActionButtons = (incident, setSolutionOpen, setConfirm, addToast) => {
