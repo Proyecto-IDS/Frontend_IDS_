@@ -1,10 +1,8 @@
 import PropTypes from 'prop-types';
 
-const HALF_CIRCLE_DEGREES = 180;
-
 // Helper to describe an arc path for SVG
 function polarToCartesian(cx, cy, radius, angleInDegrees) {
-  const angleInRadians = (angleInDegrees - 90) * Math.PI / HALF_CIRCLE_DEGREES;
+  const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
   return {
     x: cx + (radius * Math.cos(angleInRadians)),
     y: cy + (radius * Math.sin(angleInRadians))

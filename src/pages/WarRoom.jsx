@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAppActions, useAppState } from '../app/state.js';
 import { getRouteHash, navigate } from '../app/router.js';
-import { connectAlertsWebSocket, connectWarRoomChatWebSocket } from '../app/api.js';
+import { connectAlertsWebSocket, connectWarRoomChatWebSocket, getAlertMLMetrics } from '../app/api.js';
 import Loader from '../components/Loader.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import LoadingOverlay from '../components/LoadingOverlay.jsx';
 import AIPrivateChat from '../components/AIPrivateChat.jsx';
+import Tag from '../components/Tag.jsx';
 import Top5Probabilities from '../components/Top5Probabilities.jsx';
 import AllProbabilitiesChart from '../components/AllProbabilitiesChart.jsx';
 import MetricsGauge from '../components/MetricsGauge.jsx';
 import ThreatLevelIndicator from '../components/ThreatLevelIndicator.jsx';
+import ProbabilityDistribution from '../components/ProbabilityDistribution.jsx';
 
 // Helper functions
 const formatTimestamp = (value) => {
@@ -160,8 +162,7 @@ function WarRoom({ params }) {
     const id = globalThis.setTimeout(() => {
       try {
         el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      } catch (scrollError) {
-        // Fallback for browsers that don't support smooth scroll
+      } catch (e) {
         el.scrollTop = el.scrollHeight;
       }
     }, 50);
@@ -471,39 +472,47 @@ function WarRoom({ params }) {
   // Bloquear recarga de página durante la reunión
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'F5') {
-        event.preventDefault();
-        return false;
-      }
-      
-      if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
-        event.preventDefault();
-        return false;
-      }
-      
-      if (event.ctrlKey && event.key === 'F5') {
-        event.preventDefault();
-        return false;
-      }
+      try {
+        if (event.key === 'F5') {
+          event.preventDefault();
+          return false;
+        }
+        
+        if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+          event.preventDefault();
+          return false;
+        }
+        
+        if (event.ctrlKey && event.key === 'F5') {
+          event.preventDefault();
+          return false;
+        }
 
-      // Bloquear zoom con teclado (Ctrl/Cmd + +/-/0)
-      if ((event.ctrlKey || event.metaKey) && (event.key === '+' || event.key === '-' || event.key === '0' || event.key === '=' || event.key.toLowerCase() === 'ñ')) {
-        event.preventDefault();
-        return false;
-      }
+        // Bloquear zoom con teclado (Ctrl/Cmd + +/-/0)
+        if ((event.ctrlKey || event.metaKey) && (event.key === '+' || event.key === '-' || event.key === '0' || event.key === '=' || event.key.toLowerCase() === 'ñ')) {
+          event.preventDefault();
+          return false;
+        }
 
-      // Bloquear búsqueda del navegador (Ctrl/Cmd + F)
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
-        event.preventDefault();
-        return false;
+        // Bloquear búsqueda del navegador (Ctrl/Cmd + F)
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          return false;
+        }
+      } catch (error) {
+        console.warn('Error handling keydown:', error);
       }
     };
 
     const handleWheel = (event) => {
-      // Bloquear zoom con scroll (Ctrl/Cmd + scroll)
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        return false;
+      try {
+        // Bloquear zoom con scroll (Ctrl/Cmd + scroll)
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          return false;
+        }
+      } catch (error) {
+        console.warn('Error handling wheel:', error);
       }
     };
 
@@ -550,8 +559,7 @@ function WarRoom({ params }) {
       if (el) {
         try {
           el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-        } catch (scrollError) {
-          // Fallback for browsers that don't support smooth scroll
+        } catch (e) {
           el.scrollTop = el.scrollHeight;
         }
       }
@@ -561,11 +569,6 @@ function WarRoom({ params }) {
       }, 200);
     } catch (error) {
       console.error('Failed to send message:', error);
-      addToast({
-        title: 'Error al enviar mensaje',
-        description: error.message || 'No se pudo enviar el mensaje',
-        tone: 'danger'
-      });
     }
   };
 
@@ -658,6 +661,17 @@ function WarRoom({ params }) {
       console.warn('[WarRoom] Exit navigation failed:', error_?.message);
       setLoadingOverlay(prev => ({ ...prev, isVisible: false }));
     }
+  };
+
+  // Helper para obtener tono de severidad
+  const getSeverityTone = (severity) => {
+    if (!severity) return 'muted';
+    const lower = String(severity).toLowerCase();
+    if (lower.includes('critica') || lower === 'critical') return 'danger';
+    if (lower.includes('alta') || lower === 'high') return 'warn';
+    if (lower.includes('media') || lower === 'medium') return 'info';
+    if (lower.includes('falso') || lower.includes('false')) return 'info';
+    return 'success';
   };
 
   // Memorizar el panel de métricas para evitar re-renders
@@ -890,16 +904,22 @@ function WarRoom({ params }) {
 
       {/* Modal para mostrar la gráfica completa */}
       {showProbModal && (
-        <div className="modal-backdrop">
-          <div 
-            className="modal-backdrop-overlay"
-            onClick={() => setShowProbModal(false)}
-            onKeyDown={(e) => e.key === 'Escape' && setShowProbModal(false)}
-            aria-label="Cerrar modal"
-          />
-          <div className="modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+        <div 
+          role="dialog" 
+          aria-modal="true" 
+          aria-labelledby="prob-modal-title"
+          className="modal-backdrop" 
+          onClick={() => setShowProbModal(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setShowProbModal(false);
+            }
+          }}
+          tabIndex={-1}
+        >
+          <div className="modal" onClick={e => e.stopPropagation()} role="document">
             <header style={{ marginBottom: '1rem', textAlign: 'center' }}>
-              <h3>Resultados de Probabilidades</h3>
+              <h3 id="prob-modal-title">Resultados de Probabilidades</h3>
             </header>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
               <AllProbabilitiesChart probabilities={mlMetrics?.probabilities} />

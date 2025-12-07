@@ -43,11 +43,7 @@ function ProbabilityDistribution({ probabilities }) {
                 className="distribution-bar"
                 style={{
                   width: `${(probability / maxValue) * 100}%`,
-                  backgroundColor: (() => {
-                    if (probability > 0.5) return '#ef4444';
-                    if (probability > 0.3) return '#f59e0b';
-                    return '#10b981';
-                  })(),
+                  backgroundColor: probability > 0.5 ? '#ef4444' : probability > 0.3 ? '#f59e0b' : '#10b981',
                 }}
               />
             </div>

@@ -305,7 +305,7 @@ export async function getAlertIdFromIncidentId(incidentId, baseUrl) {
     }
     
     // Strategy 3: Check if incidentId is numeric and matches alert.id
-    if (!matchingAlert && !Number.isNaN(Number(incidentId))) {
+    if (!matchingAlert && !isNaN(incidentId)) {
       const numericId = Number(incidentId);
       matchingAlert = alerts.find(alert => alert.id === numericId);
     }

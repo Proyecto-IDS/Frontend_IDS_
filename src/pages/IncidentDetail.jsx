@@ -35,13 +35,6 @@ const formatDuration = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Helper function to get severity tag class
-const getSeverityTagClass = (severity) => {
-  if (severity === 'critica') return 'danger';
-  if (severity === 'alta') return 'warn';
-  return 'info';
-};
-
 // Helper function to compute participant count
 const getParticipantCount = (warRoomState, isResolved) => {
   if (isResolved) {
@@ -61,6 +54,19 @@ const getParticipantCount = (warRoomState, isResolved) => {
     return warRoomState.participantEmails.length;
   }
   return '—';
+};
+
+// Helper function to render end time section for PDF
+const getEndTimeSection = (incident, computeEndTime) => {
+  if (incident.status === 'contenido' && computeEndTime) {
+    return `
+      <div class="info-group" style="margin-top: 10px;">
+        <div class="info-label">Fin</div>
+        <div class="info-value">${computeEndTime.toLocaleString()}</div>
+      </div>
+    `;
+  }
+  return '';
 };
 
 // Helper: Render action buttons based on incident status
@@ -118,7 +124,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
         <div class="info-group">
           <div class="info-label">Severidad</div>
           <div class="info-value">
-            <span class="tag tag-${getSeverityTagClass(incident.severity)}">${incident.severity}</span>
+            <span class="tag tag-${incident.severity === 'critica' ? 'danger' : incident.severity === 'alta' ? 'warn' : 'info'}">${incident.severity}</span>
           </div>
         </div>
       </div>
@@ -133,17 +139,7 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
           <div class="info-label">Inicio</div>
           <div class="info-value">${incident.warRoomStartTime ? new Date(incident.warRoomStartTime).toLocaleString() : '—'}</div>
         </div>
-        ${(() => {
-          if (incident.status === 'contenido' && computeEndTime) {
-            return `
-              <div class="info-group" style="margin-top: 10px;">
-                <div class="info-label">Fin</div>
-                <div class="info-value">${computeEndTime.toLocaleString()}</div>
-              </div>
-            `;
-          }
-          return '';
-        })()}
+        ${getEndTimeSection(incident, computeEndTime)}
       ` : ''}
 
       <h2>🤖 Análisis IA</h2>
@@ -185,18 +181,23 @@ const handleDownloadPDF = (incident, mlInfo, warRoomState, computeEndTime) => {
 
   const iframeDoc = iframe.contentWindow.document;
   iframeDoc.open();
-  // Using write is acceptable here for PDF generation in iframe
-  iframeDoc.write(content); // sonar-ignore-line
+  iframeDoc.write(content);
   iframeDoc.close();
 
   // Esperar a que se cargue el contenido y luego imprimir/guardar como PDF
   setTimeout(() => {
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (error) {
+      console.warn('Error al imprimir:', error);
+    }
     
     // Remover el iframe después de un tiempo
     setTimeout(() => {
-      document.body.removeChild(iframe);
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
     }, 1000);
   }, 500);
 };
